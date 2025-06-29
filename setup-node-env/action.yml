@@ -81,13 +81,11 @@ runs:
         bun-version: ${{ inputs.package_manager_version }}
     
     - name: Setup pnpm
-      if: inputs.package_manager == 'pnpm'
       uses: pnpm/action-setup@v4
       with:
         version: ${{ inputs.package_manager_version }}
     
     - name: Setup Yarn
-      if: inputs.package_manager == 'yarn'
       shell: bash
       run: |
         if [ "${{ inputs.package_manager_version }}" != "latest" ]; then
