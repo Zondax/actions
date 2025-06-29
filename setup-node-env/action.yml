@@ -4,7 +4,7 @@ inputs:
   node_version:
     description: 'Node.js version to install'
     required: false
-    default: 'lts/*'
+    default: '22'
   package_manager:
     description: 'Package manager to use (npm, yarn, pnpm, or bun)'
     required: false
@@ -44,12 +44,10 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
+    - name: Install Volta
+      uses: volta-cli/action@v4
       with:
         node-version: ${{ inputs.node_version }}
-        cache: ${{ inputs.package_manager != 'bun' && inputs.cache_dependencies == 'true' && inputs.package_manager || '' }}
-        cache-dependency-path: ${{ inputs.working_directory }}/package-lock.json
     
     - name: Set package manager variables
       id: set-pm
@@ -74,35 +72,12 @@ runs:
             ;;
         esac
     
-    - name: Setup Bun
-      if: inputs.package_manager == 'bun'
-      uses: oven-sh/setup-bun@v2
-      with:
-        bun-version: ${{ inputs.package_manager_version }}
-    
-    - name: Setup pnpm
-      uses: pnpm/action-setup@v4
-      with:
-        version: ${{ inputs.package_manager_version }}
-    
-    - name: Setup Yarn
+    - name: Install all package managers with Volta
       shell: bash
       run: |
-        if [ "${{ inputs.package_manager_version }}" != "latest" ]; then
-          npm install -g yarn@${{ inputs.package_manager_version }}
-        else
-          npm install -g yarn
-        fi
-    
-    - name: Cache Bun dependencies
-      if: inputs.package_manager == 'bun' && inputs.cache_dependencies == 'true'
-      id: cache-bun
-      uses: actions/cache@v4
-      with:
-        path: ~/.bun/install/cache
-        key: ${{ runner.os }}-bun-${{ hashFiles(format('{0}/bun.lockb', inputs.working_directory)) }}
-        restore-keys: |
-          ${{ runner.os }}-bun-
+        volta install yarn@${{ inputs.package_manager_version }}
+        volta install pnpm@${{ inputs.package_manager_version }}
+        volta install bun@${{ inputs.package_manager_version }}
     
     - name: Install dependencies
       if: inputs.install_deps == 'true'
