@@ -1,0 +1,106 @@
+name: 'GCP Workload Identity Federation Authentication'
+description: 'Authenticate with Google Cloud using Workload Identity Federation with optional JWT debugging'
+inputs:
+  workload_identity_provider:
+    description: 'Workload Identity Provider resource name'
+    required: true
+  project_id:
+    description: 'GCP Project ID'
+    required: false
+    default: ''
+  service_account:
+    description: 'Service account email to impersonate'
+    required: false
+    default: ''
+  audience:
+    description: 'Audience for the OIDC token'
+    required: false
+    default: ''
+  setup_gcloud:
+    description: 'Install and configure gcloud SDK'
+    required: false
+    default: 'true'
+  gcloud_version:
+    description: 'Version of gcloud SDK to install'
+    required: false
+    default: 'latest'
+  gcloud_components:
+    description: 'Additional gcloud components to install (comma-separated)'
+    required: false
+    default: ''
+  log_jwt_info:
+    description: 'Log JWT token information for debugging'
+    required: false
+    default: 'true'
+  verify_authentication:
+    description: 'Verify authentication by running gcloud commands'
+    required: false
+    default: 'true'
+  export_credentials:
+    description: 'Export credentials to environment'
+    required: false
+    default: 'true'
+
+outputs:
+  credentials_path:
+    description: 'Path to the generated credentials file'
+    value: ${{ steps.auth.outputs.credentials_file_path }}
+  access_token:
+    description: 'Access token for authenticated requests'
+    value: ${{ steps.auth.outputs.access_token }}
+  project_id:
+    description: 'GCP Project ID'
+    value: ${{ steps.auth.outputs.project_id }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Log JWT Information
+      if: inputs.log_jwt_info == 'true'
+      uses: github/actions-oidc-debugger@main
+      with:
+        audience: ${{ inputs.audience || inputs.workload_identity_provider }}
+    
+    - name: Authenticate with Google Cloud
+      id: auth
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ inputs.workload_identity_provider }}
+        project_id: ${{ inputs.project_id }}
+        service_account: ${{ inputs.service_account }}
+        audience: ${{ inputs.audience }}
+        export_environment_variables: ${{ inputs.export_credentials }}
+        create_credentials_file: ${{ inputs.export_credentials }}
+    
+    - name: Set up Google Cloud SDK
+      if: inputs.setup_gcloud == 'true'
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        version: ${{ inputs.gcloud_version }}
+        install_components: ${{ inputs.gcloud_components }}
+    
+    - name: Verify GCP Authentication
+      if: inputs.verify_authentication == 'true'
+      shell: bash
+      run: |
+        echo "=== Authenticated Account ==="
+        gcloud auth list
+        
+        echo ""
+        echo "=== Project Info ==="
+        gcloud config get-value project
+        
+        echo ""
+        echo "=== Current Configuration ==="
+        gcloud config list
+        
+        if [ -n "${{ inputs.service_account }}" ]; then
+          echo ""
+          echo "=== Service Account Info ==="
+          echo "Impersonating: ${{ inputs.service_account }}"
+        fi
+        
+        echo ""
+        echo "=== Available APIs ==="
+        gcloud services list --enabled --format="value(config.name)" | head -10
+        echo "... (showing first 10 enabled APIs)"
