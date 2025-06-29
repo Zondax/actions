@@ -1,0 +1,72 @@
+name: 'Checkout with GitHub App'
+description: 'Checkout repository with optional GitHub App authentication and git config'
+inputs:
+  github_app_auth:
+    description: 'Use GitHub App Token'
+    required: false
+    default: 'false'
+  github_app_repos:
+    description: 'Additional repositories to access (one per line)'
+    required: false
+    default: ''
+  checkout_submodules:
+    description: 'Checkout submodules'
+    required: false
+    default: 'true'
+  fetch_depth:
+    description: 'Number of commits to fetch. 0 fetches all history'
+    required: false
+    default: '0'
+  ref:
+    description: 'The branch, tag or SHA to checkout'
+    required: false
+    default: ''
+  use_sudo:
+    description: 'Use sudo for git config command'
+    required: false
+    default: 'false'
+  patch_git_config:
+    description: 'Add safe.directory to git config'
+    required: false
+    default: 'true'
+  app_id:
+    description: 'GitHub App ID'
+    required: false
+  app_pem:
+    description: 'GitHub App PEM'
+    required: false
+
+outputs:
+  token:
+    description: 'The GitHub token used for checkout'
+    value: ${{ steps.app-token.outputs.token || github.token }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Generate GitHub App Token
+      id: app-token
+      if: inputs.github_app_auth != 'false'
+      uses: actions/create-github-app-token@v2
+      with:
+        app-id: ${{ inputs.app_id }}
+        private-key: ${{ inputs.app_pem }}
+        repositories: ${{ inputs.github_app_repos }}
+    
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ inputs.ref }}
+        fetch-depth: ${{ inputs.fetch_depth }}
+        submodules: ${{ inputs.checkout_submodules }}
+        token: ${{ steps.app-token.outputs.token || github.token }}
+    
+    - name: Patch git clone
+      if: inputs.patch_git_config == 'true'
+      shell: bash
+      run: |
+        if [[ "${{ inputs.use_sudo }}" == "true" ]]; then
+          sudo git config --system --add safe.directory '*'
+        else
+          git config --system --add safe.directory '*'
+        fi
