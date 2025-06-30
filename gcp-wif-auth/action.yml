@@ -7,11 +7,9 @@ inputs:
   project_id:
     description: 'GCP Project ID'
     required: false
-    default: ''
   service_account:
     description: 'Service account email to impersonate'
     required: false
-    default: ''
   setup_gcloud:
     description: 'Install and configure gcloud SDK'
     required: false
@@ -40,13 +38,13 @@ inputs:
 outputs:
   credentials_path:
     description: 'Path to the generated credentials file'
-    value: ${{ steps.auth.outputs.credentials_file_path }}
+    value: ${{ steps.auth.outputs.credentials_file_path || steps.auth-project.outputs.credentials_file_path || steps.auth-sa.outputs.credentials_file_path || steps.auth-both.outputs.credentials_file_path }}
   access_token:
     description: 'Access token for authenticated requests'
-    value: ${{ steps.auth.outputs.access_token }}
+    value: ${{ steps.auth.outputs.access_token || steps.auth-project.outputs.access_token || steps.auth-sa.outputs.access_token || steps.auth-both.outputs.access_token }}
   project_id:
     description: 'GCP Project ID'
-    value: ${{ steps.auth.outputs.project_id }}
+    value: ${{ steps.auth.outputs.project_id || steps.auth-project.outputs.project_id || steps.auth-sa.outputs.project_id || steps.auth-both.outputs.project_id }}
 
 runs:
   using: "composite"
@@ -57,8 +55,32 @@ runs:
       with:
         audience: ${{ inputs.workload_identity_provider }}
     
-    - name: Authenticate with Google Cloud
+    - name: Authenticate with Google Cloud (WIF only)
+      if: inputs.project_id == '' && inputs.service_account == ''
       id: auth
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ inputs.workload_identity_provider }}
+    
+    - name: Authenticate with Google Cloud (WIF + project)
+      if: inputs.project_id != '' && inputs.service_account == ''
+      id: auth-project
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ inputs.workload_identity_provider }}
+        project_id: ${{ inputs.project_id }}
+    
+    - name: Authenticate with Google Cloud (WIF + service account)
+      if: inputs.project_id == '' && inputs.service_account != ''
+      id: auth-sa
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ inputs.workload_identity_provider }}
+        service_account: ${{ inputs.service_account }}
+    
+    - name: Authenticate with Google Cloud (WIF + both)
+      if: inputs.project_id != '' && inputs.service_account != ''
+      id: auth-both
       uses: google-github-actions/auth@v2
       with:
         workload_identity_provider: ${{ inputs.workload_identity_provider }}
@@ -76,24 +98,37 @@ runs:
       if: inputs.verify_authentication == 'true'
       shell: bash
       run: |
-        echo "=== Authenticated Account ==="
-        gcloud auth list
+        echo "🔑 Checking GCP Authentication..."
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "📋 Authenticated Account:"
+        echo "    $(gcloud auth list --format="table(status,account)" 2>/dev/null || echo "⚠️ No authenticated accounts found")"
         
         echo ""
-        echo "=== Project Info ==="
-        gcloud config get-value project
-        
-        echo ""
-        echo "=== Current Configuration ==="
-        gcloud config list
-        
-        if [ -n "${{ inputs.service_account }}" ]; then
-          echo ""
-          echo "=== Service Account Info ==="
-          echo "Impersonating: ${{ inputs.service_account }}"
+        echo "🌐 Project Configuration:"
+        PROJECT=$(gcloud config get-value project 2>/dev/null)
+        if [ -n "$PROJECT" ]; then
+          echo "    ✅ Current project: $PROJECT"
+        else
+          echo "    ⚠️ No project configured"
         fi
         
         echo ""
-        echo "=== Available APIs ==="
-        gcloud services list --enabled --format="value(config.name)" | head -10
-        echo "... (showing first 10 enabled APIs)"
+        echo "⚙️ Current Configuration:"
+        echo "$(gcloud config list --format="yaml" 2>/dev/null | sed 's/^/    /' || echo "    ⚠️ Unable to retrieve configuration")"
+        
+        if [ -n "${{ inputs.service_account }}" ]; then
+          echo ""
+          echo "👤 Service Account:"
+          echo "    ${{ inputs.service_account }}"
+        fi
+        
+        echo ""
+        echo "🔌 Enabled APIs:"
+        if gcloud config get-value project &>/dev/null; then
+          gcloud services list --enabled --format="table(NAME:label=API_NAME)" 2>/dev/null | sed 's/^/    /' || echo "    ⚠️ Unable to list APIs"
+        else
+          echo "    ⚠️ Project not set, unable to list APIs"
+        fi
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        # Always exit with success as this is diagnostic only
+        exit 0
