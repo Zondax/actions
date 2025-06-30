@@ -9,8 +9,16 @@ inputs:
     description: 'Package manager to use (npm, yarn, pnpm, or bun)'
     required: false
     default: 'npm'
-  package_manager_version:
-    description: 'Package manager version (for pnpm, yarn, or bun)'
+  yarn_version:
+    description: 'Yarn version to install'
+    required: false
+    default: 'latest'
+  pnpm_version:
+    description: 'PNPM version to install'
+    required: false
+    default: 'latest'
+  bun_version:
+    description: 'Bun version to install'
     required: false
     default: 'latest'
   install_deps:
@@ -75,9 +83,9 @@ runs:
     - name: Install all package managers with Volta
       shell: bash
       run: |
-        volta install yarn@${{ inputs.package_manager_version }}
-        volta install pnpm@${{ inputs.package_manager_version }}
-        volta install bun@${{ inputs.package_manager_version }}
+        volta install yarn@${{ inputs.yarn_version }}
+        volta install pnpm@${{ inputs.pnpm_version }}
+        volta install bun@${{ inputs.bun_version }}
     
     - name: Install dependencies
       if: inputs.install_deps == 'true'
