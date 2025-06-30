@@ -12,10 +12,6 @@ inputs:
     description: 'Service account email to impersonate'
     required: false
     default: ''
-  audience:
-    description: 'Audience for the OIDC token'
-    required: false
-    default: ''
   setup_gcloud:
     description: 'Install and configure gcloud SDK'
     required: false
@@ -59,7 +55,7 @@ runs:
       if: inputs.log_jwt_info == 'true'
       uses: github/actions-oidc-debugger@main
       with:
-        audience: ${{ inputs.audience || inputs.workload_identity_provider }}
+        audience: ${{ inputs.workload_identity_provider }}
     
     - name: Authenticate with Google Cloud
       id: auth
@@ -68,9 +64,6 @@ runs:
         workload_identity_provider: ${{ inputs.workload_identity_provider }}
         project_id: ${{ inputs.project_id }}
         service_account: ${{ inputs.service_account }}
-        audience: ${{ inputs.audience }}
-        export_environment_variables: ${{ inputs.export_credentials }}
-        create_credentials_file: ${{ inputs.export_credentials }}
     
     - name: Set up Google Cloud SDK
       if: inputs.setup_gcloud == 'true'
