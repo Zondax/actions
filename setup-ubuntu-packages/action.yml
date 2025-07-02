@@ -8,11 +8,11 @@ inputs:
   mirror_url:
     description: 'Primary mirror URL (e.g., https://mirror.init7.net/ubuntu/)'
     required: false
-    default: 'https://mirrors.kernel.org/ubuntu/'
+    default: 'https://mirror.init7.net/ubuntu/'
   backup_mirrors:
     description: 'Backup mirror URLs (comma-separated)'
     required: false
-    default: 'https://mirror.math.princeton.edu/pub/ubuntu/,https://ftp.halifax.rwth-aachen.de/ubuntu/,https://mirror.init7.net/ubuntu/'
+    default: 'https://mirror.math.princeton.edu/pub/ubuntu/,https://ftp.halifax.rwth-aachen.de/ubuntu/,https://mirrors.kernel.org/ubuntu/'
   packages:
     description: 'List of packages to install (YAML list or space-separated string)'
     required: false
