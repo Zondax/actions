@@ -51,7 +51,9 @@ runs:
       with:
         app-id: ${{ inputs.app_id }}
         private-key: ${{ inputs.app_pem }}
-        repositories: ${{ inputs.github_app_repos }}
+        repositories: |
+          ${{ github.repository }}
+          ${{ inputs.github_app_repos }}
     
     - name: Checkout code
       uses: actions/checkout@v4
