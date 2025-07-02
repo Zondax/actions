@@ -8,11 +8,11 @@ inputs:
   mirror_url:
     description: 'Primary mirror URL (e.g., https://mirror.init7.net/ubuntu/)'
     required: false
-    default: 'https://mirror.init7.net/ubuntu/'
+    default: 'https://mirrors.kernel.org/ubuntu/'
   backup_mirrors:
     description: 'Backup mirror URLs (comma-separated)'
     required: false
-    default: 'https://mirror.math.princeton.edu/pub/ubuntu/,http://archive.ubuntu.com/ubuntu/,http://security.ubuntu.com/ubuntu/'
+    default: 'https://mirror.math.princeton.edu/pub/ubuntu/,https://ftp.halifax.rwth-aachen.de/ubuntu/,https://mirror.init7.net/ubuntu/'
   packages:
     description: 'List of packages to install (YAML list or space-separated string)'
     required: false
@@ -129,35 +129,30 @@ runs:
         deb $MIRROR_URL $UBUNTU_CODENAME restricted multiverse
         deb $MIRROR_URL $UBUNTU_CODENAME-updates restricted multiverse
         
-        # Security updates (use official security mirror)
-        deb http://security.ubuntu.com/ubuntu/ $UBUNTU_CODENAME-security main restricted universe multiverse
+        # Security updates (use same mirror for reliability)
+        deb $MIRROR_URL $UBUNTU_CODENAME-security main restricted universe multiverse
         
         # Skip backports by default (can be uncommented if needed)
         # deb $MIRROR_URL $UBUNTU_CODENAME-backports main restricted universe multiverse
         EOF
         
-        # Test mirror connectivity (quick check)
+        # Quick test with timeout, fallback to backup mirrors immediately
         echo "🔍 Testing mirror connectivity..."
-        if timeout 15 curl -s --connect-timeout 5 --max-time 10 "$MIRROR_URL/dists/$UBUNTU_CODENAME/" > /dev/null; then
+        if timeout 5 bash -c "</dev/tcp/${MIRROR_URL#https://}/443" 2>/dev/null; then
           echo "✅ Primary mirror is accessible"
           echo "configured=true" >> $GITHUB_OUTPUT
         else
-          echo "⚠️ Primary mirror test failed, using backup mirrors..."
+          echo "⚠️ Primary mirror failed, switching to backup mirrors..."
           
-          # Restore original and add backup mirrors
-          cp /etc/apt/sources.list.backup /etc/apt/sources.list
-          
-          IFS=',' read -ra BACKUP_MIRRORS <<< "${{ inputs.backup_mirrors }}"
-          for mirror in "${BACKUP_MIRRORS[@]}"; do
-            mirror=$(echo "$mirror" | xargs | sed 's|/$||')  # trim whitespace and trailing slash
-            echo "Adding backup mirror: $mirror"
-            cat >> /etc/apt/sources.list << EOF
-        
-        # Backup mirror: $mirror
-        deb $mirror $UBUNTU_CODENAME main restricted universe multiverse
-        deb $mirror $UBUNTU_CODENAME-updates main restricted universe multiverse
+          # Clear sources and use backup mirrors instead
+          cat > /etc/apt/sources.list << EOF
+        # Backup Ubuntu mirrors - primary mirror failed
+        deb https://mirror.math.princeton.edu/pub/ubuntu/ $UBUNTU_CODENAME main restricted universe multiverse
+        deb https://mirror.math.princeton.edu/pub/ubuntu/ $UBUNTU_CODENAME-updates main restricted universe multiverse
+        deb https://mirror.math.princeton.edu/pub/ubuntu/ $UBUNTU_CODENAME-security main restricted universe multiverse
+        deb https://ftp.halifax.rwth-aachen.de/ubuntu/ $UBUNTU_CODENAME main restricted universe multiverse
+        deb https://ftp.halifax.rwth-aachen.de/ubuntu/ $UBUNTU_CODENAME-updates main restricted universe multiverse
         EOF
-          done
           echo "configured=fallback" >> $GITHUB_OUTPUT
         fi
         
