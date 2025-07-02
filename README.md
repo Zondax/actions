@@ -67,8 +67,6 @@ Configure Ubuntu mirrors and install packages for faster, reliable CI builds.
 ```yaml
 - uses: zondax/zondax-actions/setup-ubuntu-packages@v1
   with:
-    enable_mirrors: true
-    mirror_url: 'https://mirror.init7.net/ubuntu/'
     packages: |
       - git
       - curl
@@ -81,15 +79,16 @@ Configure Ubuntu mirrors and install packages for faster, reliable CI builds.
 ```
 
 **Inputs:**
-- `enable_mirrors`: Enable mirror configuration for faster downloads (default: true)
-- `mirror_url`: Primary mirror URL (default: https://mirror.init7.net/ubuntu/)
-- `backup_mirrors`: Backup mirror URLs, comma-separated (default: official Ubuntu mirrors)
 - `packages`: List of packages to install as YAML list or space-separated string (default: git, curl)
 - `extra_packages`: Additional packages to install as YAML list or space-separated string (default: '')
+
+**Advanced Inputs (optional):**
 - `update_cache`: Run apt-get update before package installation (default: true)
 - `ubuntu_version`: Ubuntu version codename, auto-detected if empty (default: '')
 - `retry_count`: Number of retry attempts for package installation (default: 3)
 - `cache_timeout`: Timeout in seconds for package operations (default: 300)
+
+**Note:** Mirror configuration is handled automatically using fast mirrors (Init7) with fallback to official Ubuntu repositories.
 
 **Outputs:**
 - `mirror_configured`: Whether mirrors were configured successfully
