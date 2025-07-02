@@ -52,7 +52,7 @@ runs:
         app-id: ${{ inputs.app_id }}
         private-key: ${{ inputs.app_pem }}
         repositories: |
-          ${{ github.repository }}
+          ${{ github.event.repository.name }}
           ${{ inputs.github_app_repos }}
     
     - name: Checkout code
