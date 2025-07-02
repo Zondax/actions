@@ -160,6 +160,43 @@ runs:
         echo "📋 Configured package sources:"
         grep -E '^deb ' /etc/apt/sources.list | head -5
     
+    - name: Install ca-certificates
+      shell: bash
+      run: |
+        echo "🔐 Installing ca-certificates for HTTPS repository access..."
+        
+        # Set environment for non-interactive installation
+        export DEBIAN_FRONTEND=noninteractive
+        export APT_LISTCHANGES_FRONTEND=none
+        
+        # Try to install ca-certificates using HTTP mirrors first
+        # This avoids the chicken-and-egg problem of needing certificates to get certificates
+        
+        # Temporarily use HTTP mirrors to bootstrap ca-certificates
+        cp /etc/apt/sources.list /etc/apt/sources.list.https-backup
+        
+        # Create temporary HTTP-only sources
+        sed 's/https:/http:/g' /etc/apt/sources.list > /etc/apt/sources.list.http
+        cp /etc/apt/sources.list.http /etc/apt/sources.list
+        
+        echo "🌐 Using HTTP mirrors to bootstrap ca-certificates..."
+        
+        # Update with HTTP mirrors and install ca-certificates
+        if apt-get update -qq && apt-get install -yqq --no-install-recommends ca-certificates; then
+          echo "✅ ca-certificates installed successfully"
+          
+          # Restore HTTPS sources now that we have certificates
+          cp /etc/apt/sources.list.https-backup /etc/apt/sources.list
+          echo "🔒 Restored HTTPS mirrors"
+        else
+          echo "❌ Failed to install ca-certificates"
+          # Keep HTTP sources as fallback
+          echo "⚠️ Keeping HTTP mirrors as fallback"
+        fi
+        
+        # Clean up temporary files
+        rm -f /etc/apt/sources.list.http /etc/apt/sources.list.https-backup
+    
     - name: Update package cache
       if: inputs.update_cache == 'true'
       shell: bash
