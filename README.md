@@ -59,6 +59,43 @@ Setup Node.js with package manager (npm, yarn, pnpm, or bun) and install depende
 - `pm_run`: Package manager run command (e.g., 'pnpm run')
 - `cache_hit`: Whether the cache was hit
 
+### setup-ubuntu-packages
+
+Configure Ubuntu mirrors and install packages for faster, reliable CI builds.
+
+**Usage:**
+```yaml
+- uses: zondax/zondax-actions/setup-ubuntu-packages@v1
+  with:
+    enable_mirrors: true
+    mirror_url: 'https://mirror.init7.net/ubuntu/'
+    packages: |
+      - git
+      - curl
+      - build-essential
+      - pkg-config
+      - libssl-dev
+    extra_packages: |
+      - jq
+      - unzip
+```
+
+**Inputs:**
+- `enable_mirrors`: Enable mirror configuration for faster downloads (default: true)
+- `mirror_url`: Primary mirror URL (default: https://mirror.init7.net/ubuntu/)
+- `backup_mirrors`: Backup mirror URLs, comma-separated (default: official Ubuntu mirrors)
+- `packages`: List of packages to install as YAML list or space-separated string (default: git, curl)
+- `extra_packages`: Additional packages to install as YAML list or space-separated string (default: '')
+- `update_cache`: Run apt-get update before package installation (default: true)
+- `ubuntu_version`: Ubuntu version codename, auto-detected if empty (default: '')
+- `retry_count`: Number of retry attempts for package installation (default: 3)
+- `cache_timeout`: Timeout in seconds for package operations (default: 300)
+
+**Outputs:**
+- `mirror_configured`: Whether mirrors were configured successfully
+- `packages_installed`: List of successfully installed packages
+- `ubuntu_codename`: Detected Ubuntu codename
+
 ### gcp-wif-auth
 
 Authenticate with Google Cloud using Workload Identity Federation with optional JWT debugging.
