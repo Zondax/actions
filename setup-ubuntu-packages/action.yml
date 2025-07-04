@@ -71,6 +71,10 @@ runs:
         RETRY_COUNT: ${{ inputs.retry_count }}
         CACHE_TIMEOUT: ${{ inputs.cache_timeout }}
       run: |
+        set -euo pipefail
+        # Normalize package lists to space-separated strings
+        export PACKAGES="$(echo "${PACKAGES}" | tr '\n' ' ')"
+        export EXTRA_PACKAGES="$(echo "${EXTRA_PACKAGES}" | tr '\n' ' ')"
         # Run the script
         echo "Executing: ${{ github.action_path }}/setup-ubuntu-packages.sh"
         "${{ github.action_path }}/setup-ubuntu-packages.sh"
