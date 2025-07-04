@@ -35,6 +35,10 @@ inputs:
   app_pem:
     description: 'GitHub App PEM'
     required: false
+  goprivate:
+    description: 'Comma-separated list of module path prefixes for GOPRIVATE'
+    required: false
+    default: ''
 
 outputs:
   token:
@@ -72,3 +76,15 @@ runs:
         else
           git config --system --add safe.directory '*'
         fi
+    
+    - name: Configure Git for private repos
+      if: inputs.github_app_auth != 'false'
+      shell: bash
+      run: |
+        git config --global url."https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/".insteadOf "https://github.com/"
+        
+    - name: Configure Go private modules
+      if: inputs.goprivate != ''
+      shell: bash
+      run: |
+        echo "GOPRIVATE=${{ inputs.goprivate }}" >> $GITHUB_ENV
