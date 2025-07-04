@@ -19,7 +19,7 @@ jobs:
     name: Node ${{ matrix.node_version }} | ${{ matrix.package_manager }}
     runs-on: zondax-runners
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         # Multi-dimensional matrix with Node versions, package managers, and runner types
         node_version: 

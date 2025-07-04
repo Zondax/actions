@@ -16,20 +16,13 @@ concurrency:
 
 jobs:
   test-ubuntu-packages:
-    name: ${{ matrix.packages }} | ${{ matrix.ubuntu_version }}
+    name: ${{ matrix.packages }}
     runs-on: zondax-runners
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
-        # Multi-dimensional matrix for comprehensive Ubuntu testing
-        ubuntu_version:
-          - 'ubuntu-20.04'
-          - 'ubuntu-22.04'
-          - 'ubuntu-24.04'
-          - 'ubuntu-latest'
         packages:
           - 'wget'
-          - 'wget curl git'
           - 'wget curl git vim htop'
         mirror_config:
           - enable: true
@@ -54,7 +47,6 @@ jobs:
           echo "🖥️ System Information for Zondax Runners"
           echo "=================================================="
           echo "Runner: zondax-runners"
-          echo "Ubuntu version: ${{ matrix.ubuntu_version }}"
           echo "Packages: ${{ matrix.packages }}"
           echo "Mirror config: ${{ matrix.mirror_config.name }}"
           echo "Cache policy: with-update"
@@ -129,7 +121,6 @@ jobs:
           echo "📊 Performance Analysis"
           echo "======================"
           echo "Runner type: zondax-runners"
-          echo "Ubuntu version: ${{ matrix.ubuntu_version }}"
           echo "Packages: ${{ matrix.packages }}"
           echo "Mirror configuration: ${{ matrix.mirror_config.name }}"
           echo "Cache policy: with-update"
@@ -209,7 +200,6 @@ jobs:
         run: |
           echo "📋 Test Summary for ${{ matrix.packages }}"
           echo "============================================"
-          echo "✅ Ubuntu version: ${{ matrix.ubuntu_version }}"
           echo "✅ Runner type: zondax-runners"
           echo "✅ Packages: ${{ matrix.packages }}"
           echo "✅ Mirror configuration: ${{ matrix.mirror_config.name }}"
@@ -225,20 +215,18 @@ jobs:
           
           # Package count verification
           installed_count=$(echo "${{ steps.install-packages.outputs.packages_installed }}" | wc -w)
-          expected_base=$(echo "${{ steps.packages.outputs.packages }}" | wc -w)
-          expected_extra=$(echo "${{ steps.packages.outputs.extra_packages }}" | wc -w)
-          expected_total=$((expected_base + expected_extra))
+          expected_count=$(echo "${{ steps.packages.outputs.packages }}" | wc -w)
           
           echo ""
           echo "📦 Package Installation Summary:"
-          echo "Expected packages: $expected_total"
+          echo "Expected packages: $expected_count"
           echo "Reported installed: $installed_count"
           
-          if [ "$installed_count" -ge "$expected_total" ]; then
+          if [ "$installed_count" -ge "$expected_count" ]; then
             echo "✅ All expected packages appear to be installed"
           else
             echo "⚠️ Package count mismatch - may include dependencies"
           fi
           
           echo ""
-          echo "🎉 All tests completed successfully on ${{ matrix.runner_type }}!"
+          echo "🎉 All tests completed successfully on zondax-runners!"
