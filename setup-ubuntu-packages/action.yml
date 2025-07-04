@@ -1,5 +1,8 @@
 name: 'Setup Ubuntu Packages'
 description: 'Configure Ubuntu mirrors and install packages for faster, reliable CI builds'
+branding:
+  icon: 'download'
+  color: 'orange'
 inputs:
   enable_mirrors:
     description: 'Enable mirror configuration for faster downloads'

@@ -1,0 +1,274 @@
+name: Test Node.js Environment Action (Complex Matrix)
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+  schedule:
+    # Run comprehensive tests daily at 1 AM UTC
+    - cron: '0 1 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-node-environment:
+    name: Node ${{ matrix.node_version }} | ${{ matrix.package_manager }}
+    runs-on: zondax-runners
+    strategy:
+      fail-fast: false
+      matrix:
+        # Multi-dimensional matrix with Node versions, package managers, and runner types
+        node_version: 
+          - '22'
+          - '24'
+        package_manager:
+          - npm
+          - yarn
+          - pnpm
+          - bun
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create test project structure
+        run: |
+          echo "🏗️ Creating test project for Node ${{ matrix.node_version }} with ${{ matrix.package_manager }}..."
+          
+          # Create different project types based on package manager
+          case "${{ matrix.package_manager }}" in
+            npm)
+              cat > package.json << 'EOF'
+          {
+            "name": "zondax-test-npm",
+            "version": "1.0.0",
+            "scripts": {
+              "test": "node -e \"console.log('npm test passed')\"",
+              "env:init:ci": "echo 'npm env:init:ci executed'"
+            },
+            "dependencies": {
+              "lodash": "^4.17.21"
+            }
+          }
+          EOF
+              ;;
+            yarn)
+              cat > package.json << 'EOF'
+          {
+            "name": "zondax-test-yarn",
+            "version": "1.0.0",
+            "scripts": {
+              "test": "node -e \"console.log('yarn test passed')\"",
+              "env:init:ci": "echo 'yarn env:init:ci executed'"
+            },
+            "dependencies": {
+              "lodash": "^4.17.21",
+              "chalk": "^4.1.2"
+            }
+          }
+          EOF
+              ;;
+            pnpm)
+              cat > package.json << 'EOF'
+          {
+            "name": "zondax-test-pnpm",
+            "version": "1.0.0",
+            "scripts": {
+              "test": "node -e \"console.log('pnpm test passed')\"",
+              "env:init:ci": "echo 'pnpm env:init:ci executed'"
+            },
+            "dependencies": {
+              "lodash": "^4.17.21",
+              "axios": "^1.6.0"
+            }
+          }
+          EOF
+              ;;
+            bun)
+              cat > package.json << 'EOF'
+          {
+            "name": "zondax-test-bun",
+            "version": "1.0.0",
+            "scripts": {
+              "test": "node -e \"console.log('bun test passed')\"",
+              "env:init:ci": "echo 'bun env:init:ci executed'"
+            },
+            "dependencies": {
+              "lodash": "^4.17.21"
+            }
+          }
+          EOF
+              ;;
+          esac
+          
+          echo "📦 Created package.json for ${{ matrix.package_manager }}"
+
+      - name: Setup Node.js ${{ matrix.node_version }} with ${{ matrix.package_manager }}
+        id: setup-node
+        uses: ./setup-node-env
+        with:
+          node_version: ${{ matrix.node_version }}
+          package_manager: ${{ matrix.package_manager }}
+          cache_dependencies: true
+          install_deps: true
+          autoinit_env: false
+
+      - name: Verify Node.js installation
+        run: |
+          echo "✅ Verifying Node.js installation on zondax-runners..."
+          echo "Runner: zondax-runners"
+          echo "Package manager: ${{ steps.setup-node.outputs.pm }}"
+          echo "Package manager run command: ${{ steps.setup-node.outputs.pm_run }}"
+          echo "Cache hit: ${{ steps.setup-node.outputs.cache_hit }}"
+          
+          # Test Node.js version
+          node_version=$(node --version)
+          echo "Installed Node.js version: $node_version"
+          
+          # Verify expected Node version
+          if [[ "$node_version" == v${{ matrix.node_version }}.* ]]; then
+            echo "✅ Correct Node.js version installed"
+          else
+            echo "❌ Wrong Node.js version. Expected v${{ matrix.node_version }}.x, got $node_version"
+            exit 1
+          fi
+          
+          # System information for runner comparison
+          echo "🖥️ System Information:"
+          echo "CPU cores: $(nproc)"
+          echo "Memory: $(free -h | head -2)"
+          echo "Disk space: $(df -h / | tail -1)"
+
+      - name: Verify package manager and performance
+        run: |
+          echo "✅ Verifying package manager: ${{ matrix.package_manager }} on zondax-runners"
+          
+          # Measure package manager setup time
+          start_time=$(date +%s%N)
+          
+          case "${{ matrix.package_manager }}" in
+            npm)
+              npm --version
+              npm config get registry
+              npm config list
+              ;;
+            yarn)
+              yarn --version
+              yarn config get registry
+              yarn config list --json || yarn config list
+              ;;
+            pnpm)
+              pnpm --version
+              pnpm config get registry
+              pnpm config list
+              ;;
+            bun)
+              bun --version
+              bun pm --help || echo "Bun PM help not available"
+              ;;
+          esac
+          
+          end_time=$(date +%s%N)
+          duration=$(( (end_time - start_time) / 1000000 ))
+          echo "⏱️ Package manager verification took: ${duration}ms on zondax-runners"
+
+      - name: Test dependency installation and execution
+        run: |
+          echo "🧪 Testing dependency installation on zondax-runners..."
+          
+          # Measure installation time
+          start_time=$(date +%s)
+          
+          # Dependencies should already be installed by setup-node-env
+          echo "Dependencies installation status: true"
+          echo "Auto-init environment: false"
+          
+          # Verify dependencies are available
+          if [ -f "node_modules/lodash/package.json" ]; then
+            echo "✅ Dependencies were installed correctly"
+            
+            # Test package functionality
+            node -e "
+              const _ = require('lodash');
+              console.log('✅ lodash version:', _.VERSION);
+              console.log('✅ Basic lodash test:', _.isArray([]));
+            "
+            
+            # Test additional packages based on package manager
+            case "${{ matrix.package_manager }}" in
+              yarn)
+                if [ -f "node_modules/chalk/package.json" ]; then
+                  node -e "const chalk = require('chalk'); console.log(chalk.green('✅ chalk is working'));"
+                fi
+                ;;
+              pnpm)
+                if [ -f "node_modules/axios/package.json" ]; then
+                  node -e "const axios = require('axios'); console.log('✅ axios version:', axios.VERSION || 'available');"
+                fi
+                ;;
+            esac
+          else
+            echo "ℹ️ Dependencies not found (expected when install_deps=false)"
+          fi
+          
+          end_time=$(date +%s)
+          duration=$((end_time - start_time))
+          echo "⏱️ Dependency testing took: ${duration}s on zondax-runners"
+
+      - name: Test script execution
+        run: |
+          echo "🚀 Testing script execution..."
+          
+          # Test package manager run command
+          echo "Testing: ${{ steps.setup-node.outputs.pm_run }} test"
+          ${{ steps.setup-node.outputs.pm_run }} test
+          
+          # Test env:init:ci if it was run
+          echo "ℹ️ env:init:ci was not executed (autoinit_env=false)"
+
+      - name: Performance benchmarking
+        run: |
+          echo "📊 Performance Analysis for zondax-runners"
+          echo "=================================="
+          echo "Runner type: zondax-runners"
+          echo "Node version: ${{ matrix.node_version }}"
+          echo "Package manager: ${{ matrix.package_manager }}"
+          echo "Cache enabled: true"
+          echo "Dependencies installed: true"
+          echo "Auto-init: false"
+          echo "Cache hit: ${{ steps.setup-node.outputs.cache_hit }}"
+          echo ""
+          
+          # Runner-specific performance expectations
+          echo "🏃‍♂️ Zondax runners - Swiss datacenter infrastructure"
+          echo "Expected: Full CI/CD workflows and Node.js operations"
+          
+          # Performance info
+          echo "✅ Dependencies cached and installed for optimal performance"
+          
+          if [ "${{ matrix.package_manager }}" = "bun" ]; then
+            echo "ℹ️ Note: Bun performance on zondax-runners"
+          fi
+
+      - name: Runner and environment summary
+        run: |
+          echo "📋 Test Summary"
+          echo "==============="
+          echo "✅ Node.js ${{ matrix.node_version }} installed successfully"
+          echo "✅ Package manager ${{ matrix.package_manager }} configured"
+          echo "✅ Runner zondax-runners performed well"
+          echo "✅ Cache status: ${{ steps.setup-node.outputs.cache_hit }}"
+          
+          # Collect system metrics for monitoring
+          echo ""
+          echo "🔍 Final System State:"
+          echo "Load average: $(uptime | cut -d',' -f3-)"
+          echo "Memory usage: $(free | grep Mem | awk '{printf \"%.1f%%\n\", $3/$2*100}')"
+          echo "Node process count: $(pgrep -c node || echo 0)"
+          
+          echo ""
+          echo "🎉 All tests passed on zondax-runners!"

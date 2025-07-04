@@ -1,5 +1,8 @@
 name: 'Checkout with GitHub App'
 description: 'Checkout repository with optional GitHub App authentication and git config'
+branding:
+  icon: 'git-branch'
+  color: 'gray-dark'
 inputs:
   github_app_auth:
     description: 'Use GitHub App Token'
