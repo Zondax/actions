@@ -106,19 +106,6 @@ jobs:
           esac
           
           echo "📦 Created package.json for ${{ matrix.package_manager }}"
-          
-          # Create appropriate lockfile to prevent installation errors
-          case "${{ matrix.package_manager }}" in
-            yarn)
-              echo "# Yarn lockfile for testing" > yarn.lock
-              ;;
-            pnpm)
-              echo "lockfileVersion: 5.4" > pnpm-lock.yaml
-              ;;
-            bun)
-              echo "{}" > bun.lockb
-              ;;
-          esac
 
       - name: Setup Node.js ${{ matrix.node_version }} with ${{ matrix.package_manager }}
         id: setup-node

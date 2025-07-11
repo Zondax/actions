@@ -40,6 +40,10 @@ inputs:
     description: 'Run env:init:ci script after installing dependencies'
     required: false
     default: 'false'
+  allow_lockfile_modifications:
+    description: 'Allow package managers to create or modify lockfiles'
+    required: false
+    default: 'true'
 
 outputs:
   pm:
@@ -95,7 +99,32 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working_directory }}
       run: |
-        ${{ steps.set-pm.outputs.pm }} install
+        if [[ "${{ inputs.allow_lockfile_modifications }}" == "false" ]]; then
+          case "${{ inputs.package_manager }}" in
+            yarn)
+              # For Yarn, use --immutable to prevent any lockfile changes
+              ${{ steps.set-pm.outputs.pm }} install --immutable || ${{ steps.set-pm.outputs.pm }} install --frozen-lockfile
+              ;;
+            pnpm)
+              ${{ steps.set-pm.outputs.pm }} install --frozen-lockfile
+              ;;
+            bun)
+              ${{ steps.set-pm.outputs.pm }} install --frozen-lockfile
+              ;;
+            *)
+              # npm - use ci command if package-lock.json exists
+              if [[ -f "package-lock.json" ]]; then
+                ${{ steps.set-pm.outputs.pm }} ci
+              else
+                echo "Warning: No package-lock.json found, using regular install"
+                ${{ steps.set-pm.outputs.pm }} install
+              fi
+              ;;
+          esac
+        else
+          # Allow modifications - normal install
+          ${{ steps.set-pm.outputs.pm }} install
+        fi
     
     - name: Initialize environment
       if: inputs.autoinit_env == 'true'
