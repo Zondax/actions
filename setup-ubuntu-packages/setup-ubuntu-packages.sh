@@ -5,19 +5,20 @@ set -euo pipefail
 # setup-ubuntu-packages.sh
 # Configure Ubuntu mirrors and install packages for faster, reliable CI builds
 
-# Mirror configuration (optimized for Zurich/Switzerland datacenters)
-PRIMARY_MIRROR="https://mirror.init7.net/ubuntu/"
+# Mirror configuration (optimized for Zurich datacenter)
+PRIMARY_MIRROR="https://ubuntu.ethz.ch/ubuntu/"
 BACKUP_MIRRORS=(
-    "https://ubuntu.ethz.ch/ubuntu/"              # ETH Zurich - local Swiss mirror
-    "https://ftp.halifax.rwth-aachen.de/ubuntu/"  # Germany - close to Switzerland
-    "https://mirror.math.princeton.edu/pub/ubuntu/" # US fallback
+    "http://ch.archive.ubuntu.com/ubuntu/"        # Switzerland country mirror (HTTP)
+    "https://ftp.halifax.rwth-aachen.de/ubuntu/"  # Germany - very close to Zurich
+    "https://mirror.init7.net/ubuntu/"            # Switzerland - Init7
     "https://mirrors.kernel.org/ubuntu/"          # Global CDN fallback
+    "http://archive.ubuntu.com/ubuntu/"           # Official Ubuntu (HTTP fallback)
 )
 
 # Default configuration
 DEFAULT_ENABLE_MIRRORS="true"
 DEFAULT_MIRROR_URL="$PRIMARY_MIRROR"
-DEFAULT_BACKUP_MIRRORS="https://mirror.math.princeton.edu/pub/ubuntu/,https://ftp.halifax.rwth-aachen.de/ubuntu/,https://mirrors.kernel.org/ubuntu/"
+DEFAULT_BACKUP_MIRRORS="http://ch.archive.ubuntu.com/ubuntu/,https://ftp.halifax.rwth-aachen.de/ubuntu/,https://mirror.init7.net/ubuntu/,https://mirrors.kernel.org/ubuntu/"
 DEFAULT_PACKAGES="git curl"
 DEFAULT_EXTRA_PACKAGES=""
 DEFAULT_UPDATE_CACHE="true"
