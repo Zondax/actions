@@ -12,7 +12,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   test-ubuntu-packages:
@@ -107,7 +107,7 @@ jobs:
                 vim --version | head -1
                 ;;
               htop)
-                htop --version 2>/dev/null || echo "htop: $(htop --help 2>&1 | head -1)"
+                echo "htop: $(which htop)" && htop --version 2>/dev/null || echo "htop: installed but version check failed"
                 ;;
               *)
                 echo "Testing: $package (generic test)"
