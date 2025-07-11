@@ -1,4 +1,4 @@
-name: Test Ubuntu Package Action (Comprehensive Matrix)
+name: Ubuntu Action
 
 on:
   push:

@@ -1,4 +1,4 @@
-name: Test Node.js Environment Action (Complex Matrix)
+name: Node.js Action
 
 on:
   push:
@@ -46,80 +46,21 @@ jobs:
           install_deps: false
           autoinit_env: false
 
-      - name: Verify Node.js installation
+      - name: Verify Installation
         run: |
-          echo "✅ Verifying Node.js installation on zondax-runners..."
-          echo "Runner: zondax-runners"
-          echo "Package manager: ${{ steps.setup-node.outputs.pm }}"
-          echo "Package manager run command: ${{ steps.setup-node.outputs.pm_run }}"
-          echo "Cache hit: ${{ steps.setup-node.outputs.cache_hit }}"
-          
-          # Test Node.js version
+          # Check Node.js
           node_version=$(node --version)
-          echo "Installed Node.js version: $node_version"
+          echo "Node.js: $node_version"
+          [[ "$node_version" == v${{ matrix.node_version }}.* ]] || exit 1
           
-          # Verify expected Node version
-          if [[ "$node_version" == v${{ matrix.node_version }}.* ]]; then
-            echo "✅ Correct Node.js version installed"
-          else
-            echo "❌ Wrong Node.js version. Expected v${{ matrix.node_version }}.x, got $node_version"
-            exit 1
-          fi
-          
-          # System information for runner comparison
-          echo "🖥️ System Information:"
-          echo "CPU cores: $(nproc)"
-          echo "Memory: $(free -h | head -2)"
-          echo "Disk space: $(df -h / | tail -1)"
-
-      - name: Verify package manager and performance
-        run: |
-          echo "✅ Verifying package manager: ${{ matrix.package_manager }} on zondax-runners"
-          
-          # Measure package manager setup time
-          start_time=$(date +%s%N)
-          
+          # Check package manager
           case "${{ matrix.package_manager }}" in
-            npm)
-              npm --version
-              npm config get registry
-              npm config list
-              ;;
-            yarn)
-              yarn --version
-              # Yarn v4 doesn't have a global registry config, check if config works
-              yarn config --version || echo "Yarn config check passed"
-              ;;
-            pnpm)
-              pnpm --version
-              pnpm config get registry
-              pnpm config list
-              ;;
-            bun)
-              bun --version
-              bun pm --help || echo "Bun PM help not available"
-              ;;
+            npm)  npm --version  ;;
+            yarn) yarn --version ;;
+            pnpm) pnpm --version ;;
+            bun)  bun --version  ;;
           esac
           
-          end_time=$(date +%s%N)
-          duration=$(( (end_time - start_time) / 1000000 ))
-          echo "⏱️ Package manager verification took: ${duration}ms on zondax-runners"
+          echo "✅ Node.js ${{ matrix.node_version }} + ${{ matrix.package_manager }} working!"
 
-      - name: Runner and environment summary
-        run: |
-          echo "📋 Test Summary"
-          echo "==============="
-          echo "✅ Node.js ${{ matrix.node_version }} installed successfully"
-          echo "✅ Package manager ${{ matrix.package_manager }} configured"
-          echo "✅ Runner zondax-runners performed well"
-          echo "✅ Cache status: ${{ steps.setup-node.outputs.cache_hit }}"
-          
-          # Collect system metrics for monitoring
-          echo ""
-          echo "🔍 Final System State:"
-          echo "Load average: $(uptime | cut -d',' -f3-)"
-          echo "Memory usage: $(free | grep Mem | awk '{printf \"%.1f%%\n\", $3/$2*100}')"
-          echo "Node process count: $(pgrep -c node || echo 0)"
-          
-          echo ""
-          echo "🎉 All tests passed on zondax-runners!"
+
