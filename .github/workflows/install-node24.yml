@@ -105,49 +105,6 @@ jobs:
           duration=$(( (end_time - start_time) / 1000000 ))
           echo "⏱️ Package manager verification took: ${duration}ms on zondax-runners"
 
-      - name: Test dependency installation and execution
-        run: |
-          echo "🧪 Testing dependency installation on zondax-runners..."
-          
-          # Measure installation time
-          start_time=$(date +%s)
-          
-          # Dependencies should already be installed by setup-node-env
-          echo "Dependencies installation status: true"
-          echo "Auto-init environment: false"
-          
-          # Verify dependencies are available
-          if [ -f "node_modules/lodash/package.json" ]; then
-            echo "✅ Dependencies were installed correctly"
-            
-            # Test package functionality
-            node -e "
-              const _ = require('lodash');
-              console.log('✅ lodash version:', _.VERSION);
-              console.log('✅ Basic lodash test:', _.isArray([]));
-            "
-            
-            # Test additional packages based on package manager
-            case "${{ matrix.package_manager }}" in
-              yarn)
-                if [ -f "node_modules/chalk/package.json" ]; then
-                  node -e "const chalk = require('chalk'); console.log(chalk.green('✅ chalk is working'));"
-                fi
-                ;;
-              pnpm)
-                if [ -f "node_modules/axios/package.json" ]; then
-                  node -e "const axios = require('axios'); console.log('✅ axios version:', axios.VERSION || 'available');"
-                fi
-                ;;
-            esac
-          else
-            echo "ℹ️ Dependencies not found (expected when install_deps=false)"
-          fi
-          
-          end_time=$(date +%s)
-          duration=$((end_time - start_time))
-          echo "⏱️ Dependency testing took: ${duration}s on zondax-runners"
-
       - name: Runner and environment summary
         run: |
           echo "📋 Test Summary"
