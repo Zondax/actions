@@ -114,9 +114,8 @@ jobs:
           node_version: ${{ matrix.node_version }}
           package_manager: ${{ matrix.package_manager }}
           cache_dependencies: true
-          install_deps: true
+          install_deps: false
           autoinit_env: false
-          allow_lockfile_modifications: true
 
       - name: Verify Node.js installation
         run: |
