@@ -17,7 +17,7 @@ concurrency:
 jobs:
   test-ubuntu-packages:
     name: ${{ matrix.packages }}
-    runs-on: zondax-runners
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: true
       matrix:
