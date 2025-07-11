@@ -17,7 +17,7 @@ concurrency:
 jobs:
   test-node-environment:
     name: Node ${{ matrix.node_version }} | ${{ matrix.package_manager }}
-    runs-on: ubuntu-latest
+    runs-on: zondax-runners
     strategy:
       fail-fast: true
       matrix:
