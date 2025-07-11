@@ -246,7 +246,7 @@ install_ca_certificates() {
     export APT_LISTCHANGES_FRONTEND=none
     
     # Simple install - most modern Ubuntu images have HTTPS support
-    apt-get install -yqq --no-install-recommends ca-certificates || {
+    sudo apt-get install -yqq --no-install-recommends ca-certificates || {
         log_warning "ca-certificates installation failed, but continuing..."
     }
 }
@@ -270,7 +270,7 @@ update_package_cache() {
     export APT_LISTCHANGES_FRONTEND=none
     
     # Configure apt for faster CI operations
-    cat > /etc/apt/apt.conf.d/99ci-optimizations << 'EOF'
+    sudo tee /etc/apt/apt.conf.d/99ci-optimizations > /dev/null << 'EOF'
 // CI Optimizations - Faster package operations
 Acquire::Languages "none";
 Acquire::GzipIndexes "true";
@@ -285,7 +285,7 @@ EOF
     
     # Fast path: try update once, fallback to backup mirrors if it fails
     log_verbose "Updating package cache..."
-    if timeout "$CACHE_TIMEOUT" apt-get update -qq; then
+    if timeout "$CACHE_TIMEOUT" sudo apt-get update -qq; then
         log_success "Package cache updated successfully"
     else
         log_warning "Primary mirror failed, trying backup mirrors..."
@@ -301,7 +301,7 @@ done)
 EOF
         
         # Retry update with backup mirrors
-        if timeout "$CACHE_TIMEOUT" apt-get update -qq; then
+        if timeout "$CACHE_TIMEOUT" sudo apt-get update -qq; then
             log_success "Package cache updated using backup mirrors"
             MIRROR_CONFIGURED="fallback"
         else
@@ -362,7 +362,7 @@ install_packages() {
     
     # Fast path: try installation once, retry with fallbacks if it fails
     log_verbose "Installing packages: $all_packages"
-    if timeout "$CACHE_TIMEOUT" apt-get install -yqq --no-install-recommends $all_packages; then
+    if timeout "$CACHE_TIMEOUT" sudo apt-get install -yqq --no-install-recommends $all_packages; then
         log_success "Packages installed successfully"
         PACKAGES_INSTALLED="$all_packages"
     else
@@ -373,8 +373,8 @@ install_packages() {
             log_verbose "Retry attempt $attempt of $RETRY_COUNT..."
             
             # Refresh cache and try again
-            apt-get update -qq || true
-            if timeout "$CACHE_TIMEOUT" apt-get install -yqq --no-install-recommends $all_packages; then
+            sudo apt-get update -qq || true
+            if timeout "$CACHE_TIMEOUT" sudo apt-get install -yqq --no-install-recommends $all_packages; then
                 log_success "Packages installed successfully on retry $attempt"
                 PACKAGES_INSTALLED="$all_packages"
                 return 0
