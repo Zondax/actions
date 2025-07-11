@@ -1,0 +1,175 @@
+name: 'Rclone'
+description: 'Generic rclone operations with S3/MinIO backend including caching, sync, copy, and more'
+branding:
+  icon: 'cloud'
+  color: 'blue'
+inputs:
+  operation:
+    description: 'Rclone operation: copy (cache), sync, move, delete, size'
+    required: false
+    default: 'copy'
+  source:
+    description: 'Source path/remote (for copy/sync/move operations)'
+    required: false
+  destination:
+    description: 'Destination path/remote (for copy/sync/move operations)'
+    required: false
+  
+  # Cache-specific inputs (for backward compatibility when operation=copy)
+  mode:
+    description: 'Cache mode: restore, save, or restore-save (only for copy operation)'
+    required: false
+    default: 'restore-save'
+  key:
+    description: 'Cache key (only for copy operation)'
+    required: false
+  paths:
+    description: 'List of directories to cache (YAML list or space-separated, only for copy operation)'
+    required: false
+  restore-keys:
+    description: 'List of keys to use for restoring cache (YAML list or space-separated, only for copy operation)'
+    required: false
+    default: ''
+  
+  # S3/MinIO credentials (required for all operations)
+  endpoint:
+    description: 'S3/MinIO endpoint URL'
+    required: true
+  bucket:
+    description: 'S3/MinIO bucket name'
+    required: true
+  access-key:
+    description: 'S3/MinIO access key'
+    required: true
+  secret-key:
+    description: 'S3/MinIO secret key'
+    required: true
+  region:
+    description: 'S3 region (use "us-east-1" for MinIO)'
+    required: false
+    default: 'us-east-1'
+  
+  # General options
+  fail-on-miss:
+    description: 'Fail if cache miss on restore (only for copy operation)'
+    required: false
+    default: 'false'
+  compression:
+    description: 'Enable compression (true/false, only for copy operation)'
+    required: false
+    default: 'true'
+  progress:
+    description: 'Show progress during transfers'
+    required: false
+    default: 'true'
+  max-retries:
+    description: 'Maximum number of retry attempts for failed operations'
+    required: false
+    default: '3'
+  retry-delay:
+    description: 'Initial delay between retries in seconds (exponential backoff)'
+    required: false
+    default: '5'
+  timeout:
+    description: 'Timeout for individual operations in seconds'
+    required: false
+    default: '300'
+  parallel-transfers:
+    description: 'Number of parallel file transfers'
+    required: false
+    default: '4'
+  bandwidth-limit:
+    description: 'Bandwidth limit (e.g., 10M, 1G, 100k)'
+    required: false
+    default: ''
+  checkers:
+    description: 'Number of checkers to run in parallel'
+    required: false
+    default: '8'
+  dry-run:
+    description: 'Perform a dry run (show what would be done without actually doing it)'
+    required: false
+    default: 'false'
+  include-filters:
+    description: 'Include filters for rclone (YAML list or space-separated)'
+    required: false
+    default: ''
+  exclude-filters:
+    description: 'Exclude filters for rclone (YAML list or space-separated)'
+    required: false
+    default: ''
+  checksum-verify:
+    description: 'Verify checksums during transfers (true/false)'
+    required: false
+    default: 'true'
+  
+outputs:
+  cache-hit:
+    description: 'Whether the cache was restored (true/false, only for copy operation)'
+    value: ${{ steps.run-rclone.outputs.cache-hit }}
+  cache-key:
+    description: 'The key that was used for restore (only for copy operation)'
+    value: ${{ steps.run-rclone.outputs.cache-key }}
+  operation-result:
+    description: 'Result of the rclone operation'
+    value: ${{ steps.run-rclone.outputs.operation-result }}
+  bytes-transferred:
+    description: 'Number of bytes transferred'
+    value: ${{ steps.run-rclone.outputs.bytes-transferred }}
+  transfer-duration:
+    description: 'Duration of the transfer in seconds'
+    value: ${{ steps.run-rclone.outputs.transfer-duration }}
+  transfer-rate:
+    description: 'Transfer rate in bytes per second'
+    value: ${{ steps.run-rclone.outputs.transfer-rate }}
+  files-transferred:
+    description: 'Number of files transferred'
+    value: ${{ steps.run-rclone.outputs.files-transferred }}
+  errors:
+    description: 'Number of errors encountered'
+    value: ${{ steps.run-rclone.outputs.errors }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run rclone operation
+      id: run-rclone
+      shell: bash
+      env:
+        RCLONE_OPERATION: ${{ inputs.operation }}
+        RCLONE_SOURCE: ${{ inputs.source }}
+        RCLONE_DESTINATION: ${{ inputs.destination }}
+        
+        # Cache-specific environment variables
+        CACHE_MODE: ${{ inputs.mode }}
+        CACHE_KEY: ${{ inputs.key }}
+        CACHE_PATHS: ${{ inputs.paths }}
+        CACHE_RESTORE_KEYS: ${{ inputs.restore-keys }}
+        
+        # S3/MinIO credentials
+        RCLONE_ENDPOINT: ${{ inputs.endpoint }}
+        RCLONE_BUCKET: ${{ inputs.bucket }}
+        RCLONE_ACCESS_KEY: ${{ inputs.access-key }}
+        RCLONE_SECRET_KEY: ${{ inputs.secret-key }}
+        RCLONE_REGION: ${{ inputs.region }}
+        
+        # General options
+        RCLONE_FAIL_ON_MISS: ${{ inputs.fail-on-miss }}
+        RCLONE_COMPRESSION: ${{ inputs.compression }}
+        RCLONE_PROGRESS: ${{ inputs.progress }}
+        RCLONE_MAX_RETRIES: ${{ inputs.max-retries }}
+        RCLONE_RETRY_DELAY: ${{ inputs.retry-delay }}
+        RCLONE_TIMEOUT: ${{ inputs.timeout }}
+        RCLONE_PARALLEL_TRANSFERS: ${{ inputs.parallel-transfers }}
+        RCLONE_BANDWIDTH_LIMIT: ${{ inputs.bandwidth-limit }}
+        RCLONE_CHECKERS: ${{ inputs.checkers }}
+        RCLONE_DRY_RUN: ${{ inputs.dry-run }}
+        RCLONE_INCLUDE_FILTERS: ${{ inputs.include-filters }}
+        RCLONE_EXCLUDE_FILTERS: ${{ inputs.exclude-filters }}
+        RCLONE_CHECKSUM_VERIFY: ${{ inputs.checksum-verify }}
+      run: |
+        # Make script executable
+        chmod +x ${{ github.action_path }}/rclone.sh
+        
+        # Run the rclone script with environment variables
+        ${{ github.action_path }}/rclone.sh
