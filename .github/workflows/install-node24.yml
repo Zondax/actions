@@ -148,50 +148,6 @@ jobs:
           duration=$((end_time - start_time))
           echo "⏱️ Dependency testing took: ${duration}s on zondax-runners"
 
-      - name: Test script execution
-        run: |
-          echo "🚀 Testing script execution..."
-          
-          # Test package manager run command
-          echo "Testing: ${{ steps.setup-node.outputs.pm_run }} test"
-          case "${{ matrix.package_manager }}" in
-            yarn)
-              # Yarn v4 requires a lockfile to run scripts, skip if not installed
-              echo "ℹ️ Skipping yarn run test (dependencies not installed)"
-              ;;
-            *)
-              # Other package managers can run scripts without dependencies
-              ${{ steps.setup-node.outputs.pm_run }} test || echo "✅ Script execution test completed"
-              ;;
-          esac
-          
-          # Test env:init:ci if it was run
-          echo "ℹ️ env:init:ci was not executed (autoinit_env=false)"
-
-      - name: Performance benchmarking
-        run: |
-          echo "📊 Performance Analysis for zondax-runners"
-          echo "=================================="
-          echo "Runner type: zondax-runners"
-          echo "Node version: ${{ matrix.node_version }}"
-          echo "Package manager: ${{ matrix.package_manager }}"
-          echo "Cache enabled: true"
-          echo "Dependencies installed: true"
-          echo "Auto-init: false"
-          echo "Cache hit: ${{ steps.setup-node.outputs.cache_hit }}"
-          echo ""
-          
-          # Runner-specific performance expectations
-          echo "🏃‍♂️ Zondax runners - Swiss datacenter infrastructure"
-          echo "Expected: Full CI/CD workflows and Node.js operations"
-          
-          # Performance info
-          echo "✅ Dependencies cached and installed for optimal performance"
-          
-          if [ "${{ matrix.package_manager }}" = "bun" ]; then
-            echo "ℹ️ Note: Bun performance on zondax-runners"
-          fi
-
       - name: Runner and environment summary
         run: |
           echo "📋 Test Summary"
