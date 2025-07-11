@@ -116,6 +116,7 @@ jobs:
           cache_dependencies: true
           install_deps: true
           autoinit_env: false
+          allow_lockfile_modifications: true
 
       - name: Verify Node.js installation
         run: |
