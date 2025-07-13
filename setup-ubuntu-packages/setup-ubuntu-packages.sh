@@ -31,7 +31,9 @@ DEFAULT_DRY_RUN="false"
 # Configuration variables (environment variables take precedence, then defaults)
 ENABLE_MIRRORS="${ENABLE_MIRRORS:-${DEFAULT_ENABLE_MIRRORS}}"
 MIRROR_URL="${MIRROR_URL:-${DEFAULT_MIRROR_URL}}"
-BACKUP_MIRRORS="${BACKUP_MIRRORS:-${DEFAULT_BACKUP_MIRRORS}}"
+if [[ -z "${BACKUP_MIRRORS:-}" ]]; then
+    BACKUP_MIRRORS=(${DEFAULT_BACKUP_MIRRORS//,/ })
+fi
 PACKAGES="${PACKAGES:-${DEFAULT_PACKAGES}}"
 EXTRA_PACKAGES="${EXTRA_PACKAGES:-${DEFAULT_EXTRA_PACKAGES}}"
 UPDATE_CACHE="${UPDATE_CACHE:-${DEFAULT_UPDATE_CACHE}}"
@@ -128,7 +130,7 @@ show_configuration() {
     echo "  Enable mirrors: $ENABLE_MIRRORS"
     if [[ "$ENABLE_MIRRORS" == "true" ]]; then
         echo "  Primary mirror: $MIRROR_URL"
-        echo "  Backup mirrors: $BACKUP_MIRRORS"
+        echo "  Backup mirrors: ${BACKUP_MIRRORS[*]}"
     fi
     echo ""
     echo "Package settings:"
@@ -193,7 +195,7 @@ configure_mirrors() {
     
     # Remove trailing slash if present
     local clean_mirror_url
-    clean_mirror_url=$(echo "$MIRROR_URL" | sed 's|/$||')
+    clean_mirror_url="${MIRROR_URL%/}"
     
     # Create optimized sources.list with primary mirror
     sudo tee /etc/apt/sources.list > /dev/null << EOF
@@ -362,7 +364,7 @@ install_packages() {
     
     # Fast path: try installation once, retry with fallbacks if it fails
     log_verbose "Installing packages: $all_packages"
-    if timeout "$CACHE_TIMEOUT" sudo apt-get install -yqq --no-install-recommends $all_packages; then
+    if timeout "$CACHE_TIMEOUT" sudo apt-get install -yqq --no-install-recommends "$all_packages"; then
         log_success "Packages installed successfully"
         PACKAGES_INSTALLED="$all_packages"
     else
@@ -374,7 +376,7 @@ install_packages() {
             
             # Refresh cache and try again
             sudo apt-get update -qq || true
-            if timeout "$CACHE_TIMEOUT" sudo apt-get install -yqq --no-install-recommends $all_packages; then
+            if timeout "$CACHE_TIMEOUT" sudo apt-get install -yqq --no-install-recommends "$all_packages"; then
                 log_success "Packages installed successfully on retry $attempt"
                 PACKAGES_INSTALLED="$all_packages"
                 return 0

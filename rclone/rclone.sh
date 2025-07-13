@@ -225,7 +225,8 @@ log_json() {
     local message="$2"
     local extra_fields="$3"
     
-    local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    local timestamp
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     local json_log="{\"timestamp\":\"$timestamp\",\"level\":\"$level\",\"message\":\"$message\""
     
     if [[ -n "$extra_fields" ]]; then
@@ -257,10 +258,12 @@ collect_transfer_stats() {
     log_json "INFO" "Transfer completed" "$stats_json"
     
     # Export for GitHub Actions
-    echo "transfer-duration=$duration" >> $GITHUB_OUTPUT
-    echo "transfer-rate=$transfer_rate" >> $GITHUB_OUTPUT
-    echo "files-transferred=$files_transferred" >> $GITHUB_OUTPUT
-    echo "errors=$errors" >> $GITHUB_OUTPUT
+    {
+        echo "transfer-duration=$duration"
+        echo "transfer-rate=$transfer_rate"
+        echo "files-transferred=$files_transferred"
+        echo "errors=$errors"
+    } >> "$GITHUB_OUTPUT"
 }
 
 # Display operation summary
@@ -279,9 +282,9 @@ display_operation_summary() {
     printf "│ Operation:        %-50s │\n" "$operation"
     printf "│ Result:           %-50s │\n" "$result"
     printf "│ Files:            %-50s │\n" "$files_transferred"
-    printf "│ Data transferred: %-50s │\n" "$(format_bytes $bytes_transferred)"
-    printf "│ Duration:         %-50s │\n" "$(format_duration $duration)"
-    printf "│ Transfer rate:    %-50s │\n" "$(format_bytes_per_second $transfer_rate)"
+    printf "│ Data transferred: %-50s │\n" "$(format_bytes "$bytes_transferred")"
+    printf "│ Duration:         %-50s │\n" "$(format_duration "$duration")"
+    printf "│ Transfer rate:    %-50s │\n" "$(format_bytes_per_second "$transfer_rate")"
     
     if [[ "$DRY_RUN" == "true" ]]; then
         echo "│                                                                         │"
@@ -324,7 +327,7 @@ format_bytes_per_second() {
     if [[ $bytes_per_second -eq 0 ]]; then
         echo "0B/s"
     else
-        echo "$(format_bytes $bytes_per_second)/s"
+        echo "$(format_bytes "$bytes_per_second")/s"
     fi
 }
 
@@ -473,30 +476,32 @@ execute_sync_operation() {
     log_info "Executing rclone $operation from $source to $destination$dry_run_msg"
     log_json "INFO" "Starting operation" "\"operation\":\"$operation\",\"source\":\"$source\",\"destination\":\"$destination\",\"dry_run\":$DRY_RUN"
     
-    local options=$(build_rclone_options)
+    local options
+    options=$(build_rclone_options)
     local bytes_transferred=0
     local files_transferred=0
     local errors=0
-    local start_time=$(date +%s)
+    local start_time
+    start_time=$(date +%s)
     
     case "$operation" in
         "sync")
             if execute_rclone_with_retry sync "$source" "$destination" $options --stats 1s --stats-one-line 2>&1 | tee /tmp/rclone_output.log; then
                 log_success "Sync completed successfully"
-                echo "operation-result=success" >> $GITHUB_OUTPUT
+                echo "operation-result=success" >> "$GITHUB_OUTPUT"
             else
                 log_error "Sync failed"
-                echo "operation-result=failed" >> $GITHUB_OUTPUT
+                echo "operation-result=failed" >> "$GITHUB_OUTPUT"
                 errors=1
             fi
             ;;
         "move")
             if execute_rclone_with_retry move "$source" "$destination" $options --stats 1s --stats-one-line 2>&1 | tee /tmp/rclone_output.log; then
                 log_success "Move completed successfully"
-                echo "operation-result=success" >> $GITHUB_OUTPUT
+                echo "operation-result=success" >> "$GITHUB_OUTPUT"
             else
                 log_error "Move failed"
-                echo "operation-result=failed" >> $GITHUB_OUTPUT
+                echo "operation-result=failed" >> "$GITHUB_OUTPUT"
                 errors=1
             fi
             ;;
@@ -542,14 +547,15 @@ execute_delete_operation() {
     
     log_info "Executing rclone delete on $target"
     
-    local options=$(build_rclone_options)
+    local options
+    options=$(build_rclone_options)
     
     if execute_rclone_with_retry delete "$target" $options; then
         log_success "Delete completed successfully"
-        echo "operation-result=success" >> $GITHUB_OUTPUT
+        echo "operation-result=success" >> "$GITHUB_OUTPUT"
     else
         log_error "Delete failed"
-        echo "operation-result=failed" >> $GITHUB_OUTPUT
+        echo "operation-result=failed" >> "$GITHUB_OUTPUT"
         return 1
     fi
     
@@ -568,11 +574,11 @@ execute_size_operation() {
         local count=$(echo "$size_output" | grep -o '"count":[0-9]*' | cut -d':' -f2)
         
         log_success "Size: $bytes bytes ($count files)"
-        echo "operation-result=success" >> $GITHUB_OUTPUT
+        echo "operation-result=success" >> "$GITHUB_OUTPUT"
         echo "bytes-transferred=$bytes" >> $GITHUB_OUTPUT
     else
         log_error "Failed to get size"
-        echo "operation-result=failed" >> $GITHUB_OUTPUT
+        echo "operation-result=failed" >> "$GITHUB_OUTPUT"
         echo "bytes-transferred=0" >> $GITHUB_OUTPUT
         return 1
     fi
@@ -649,7 +655,8 @@ restore_cache() {
     
     if [[ "$COMPRESSION" == "true" ]]; then
         log_info "Downloading compressed cache..."
-        local options=$(build_rclone_options)
+        local options
+    options=$(build_rclone_options)
         if ! execute_rclone_with_retry copy "$cache_path/cache.tar.gz" "$temp_dir" $options; then
             log_error "Failed to download cache"
             rm -rf "$temp_dir"
@@ -664,7 +671,8 @@ restore_cache() {
         fi
     else
         log_info "Downloading cache directories..."
-        local options=$(build_rclone_options)
+        local options
+    options=$(build_rclone_options)
         
         for path in "${paths_array[@]}"; do
             log_info "Restoring: $path"
@@ -732,7 +740,8 @@ save_cache() {
         fi
         
         log_info "Uploading compressed cache..."
-        local options=$(build_rclone_options)
+        local options
+    options=$(build_rclone_options)
         if ! execute_rclone_with_retry copy "$temp_dir/cache.tar.gz" "$cache_path/" $options; then
             log_error "Failed to upload cache"
             rm -rf "$temp_dir"
@@ -743,7 +752,8 @@ save_cache() {
         bytes_transferred=$(stat -c%s "$temp_dir/cache.tar.gz" 2>/dev/null || echo "0")
     else
         log_info "Uploading cache directories..."
-        local options=$(build_rclone_options)
+        local options
+    options=$(build_rclone_options)
         
         local uploaded=false
         for path in "${paths_array[@]}"; do
@@ -810,7 +820,7 @@ execute_cache_operation() {
             ;;
     esac
     
-    echo "operation-result=success" >> $GITHUB_OUTPUT
+    echo "operation-result=success" >> "$GITHUB_OUTPUT"
 }
 
 # Main execution
