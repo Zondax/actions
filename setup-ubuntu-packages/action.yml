@@ -73,8 +73,9 @@ runs:
       run: |
         set -euo pipefail
         # Normalize package lists to space-separated strings
-        export PACKAGES="$(echo "${PACKAGES}" | tr '\n' ' ')"
-        export EXTRA_PACKAGES="$(echo "${EXTRA_PACKAGES}" | tr '\n' ' ')"
+        # Remove YAML list markers (-) and convert newlines to spaces
+        export PACKAGES="$(echo "${PACKAGES}" | sed 's/^[[:space:]]*-[[:space:]]*//' | tr '\n' ' ')"
+        export EXTRA_PACKAGES="$(echo "${EXTRA_PACKAGES}" | sed 's/^[[:space:]]*-[[:space:]]*//' | tr '\n' ' ')"
         # Run the script
         echo "Executing: ${{ github.action_path }}/setup-ubuntu-packages.sh"
         "${{ github.action_path }}/setup-ubuntu-packages.sh"

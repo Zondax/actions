@@ -364,7 +364,8 @@ install_packages() {
     
     # Fast path: try installation once, retry with fallbacks if it fails
     log_verbose "Installing packages: $all_packages"
-    if timeout "$CACHE_TIMEOUT" sudo apt-get install -yqq --no-install-recommends "$all_packages"; then
+    # shellcheck disable=SC2086
+    if timeout "$CACHE_TIMEOUT" sudo apt-get install -yqq --no-install-recommends $all_packages; then
         log_success "Packages installed successfully"
         PACKAGES_INSTALLED="$all_packages"
     else
@@ -376,7 +377,8 @@ install_packages() {
             
             # Refresh cache and try again
             sudo apt-get update -qq || true
-            if timeout "$CACHE_TIMEOUT" sudo apt-get install -yqq --no-install-recommends "$all_packages"; then
+            # shellcheck disable=SC2086
+            if timeout "$CACHE_TIMEOUT" sudo apt-get install -yqq --no-install-recommends $all_packages; then
                 log_success "Packages installed successfully on retry $attempt"
                 PACKAGES_INSTALLED="$all_packages"
                 return 0
