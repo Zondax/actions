@@ -75,9 +75,9 @@ runs:
       shell: bash
       run: |
         if [[ "${{ inputs.use_sudo }}" == "true" ]]; then
-          sudo git config --system --add safe.directory '*'
+          sudo git config --global --add safe.directory '*'
         else
-          git config --system --add safe.directory '*'
+          git config --global --add safe.directory '*'
         fi
     
     - name: Configure Git for private repos
