@@ -44,6 +44,10 @@ inputs:
     description: 'Allow package managers to create or modify lockfiles'
     required: false
     default: 'true'
+  use_volta:
+    description: 'Use Volta instead of mise for Node.js management (deprecated)'
+    required: false
+    default: 'false'
 
 outputs:
   pm:
@@ -60,9 +64,23 @@ runs:
   using: "composite"
   steps:
     - name: Install Volta
+      if: inputs.use_volta == 'true'
       uses: volta-cli/action@v4
       with:
         node-version: ${{ inputs.node_version }}
+    
+    - name: Install mise
+      if: inputs.use_volta != 'true'
+      uses: jdx/mise-action@v2
+      with:
+        version: latest
+    
+    - name: Setup Node.js with mise
+      if: inputs.use_volta != 'true'
+      shell: bash
+      run: |
+        mise use --global node@${{ inputs.node_version }}
+        mise install
     
     - name: Set package manager variables
       id: set-pm
@@ -88,11 +106,21 @@ runs:
         esac
     
     - name: Install all package managers with Volta
+      if: inputs.use_volta == 'true'
       shell: bash
       run: |
         volta install yarn@${{ inputs.yarn_version }}
         volta install pnpm@${{ inputs.pnpm_version }}
         volta install bun@${{ inputs.bun_version }}
+    
+    - name: Install all package managers with mise
+      if: inputs.use_volta != 'true'
+      shell: bash
+      run: |
+        mise use --global yarn@${{ inputs.yarn_version }}
+        mise use --global pnpm@${{ inputs.pnpm_version }}
+        mise use --global bun@${{ inputs.bun_version }}
+        mise install
     
     - name: Install dependencies
       if: inputs.install_deps == 'true'
