@@ -118,6 +118,26 @@ runs:
             ;;
         esac
     
+    - name: Install TypeScript globally
+      shell: bash
+      run: |
+        echo "Installing TypeScript globally..."
+        case "${{ inputs.package_manager }}" in
+          bun)
+            bun install -g typescript
+            ;;
+          yarn)
+            yarn global add typescript
+            ;;
+          pnpm)
+            pnpm add -g typescript
+            ;;
+          npm)
+            npm install -g typescript
+            ;;
+        esac
+        tsc --version || { echo "Error: TypeScript not found in PATH"; exit 1; }
+    
     - name: Install dependencies
       if: inputs.install_deps == 'true'
       shell: bash
