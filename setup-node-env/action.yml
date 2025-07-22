@@ -118,6 +118,17 @@ runs:
             ;;
         esac
     
+    - name: Setup pnpm global directory
+      if: inputs.package_manager == 'pnpm'
+      shell: bash
+      run: |
+        echo "Setting up pnpm global directory..."
+        export PNPM_HOME="$HOME/.local/share/pnpm"
+        export PATH="$PNPM_HOME:$PATH"
+        echo "PNPM_HOME=$PNPM_HOME" >> $GITHUB_ENV
+        echo "$PNPM_HOME" >> $GITHUB_PATH
+        pnpm setup
+    
     - name: Install TypeScript globally
       shell: bash
       run: |
@@ -130,6 +141,9 @@ runs:
             yarn global add typescript
             ;;
           pnpm)
+            # Ensure PNPM_HOME is in PATH for this step
+            export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"
+            export PATH="$PNPM_HOME:$PATH"
             pnpm add -g typescript
             ;;
           npm)
