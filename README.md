@@ -1,7 +1,7 @@
 # Zondax GitHub Actions
 
-[![CI/CD](https://github.com/zondax/zondax-actions/workflows/Comprehensive%20CI/CD%20Pipeline/badge.svg)](https://github.com/zondax/zondax-actions/actions)
-[![Security](https://github.com/zondax/zondax-actions/workflows/Security%20Scanning/badge.svg)](https://github.com/zondax/zondax-actions/actions)
+[![CI/CD](https://github.com/zondax/workflows/Comprehensive%20CI/CD%20Pipeline/badge.svg)](https://github.com/zondax/actions)
+[![Security](https://github.com/zondax/workflows/Security%20Scanning/badge.svg)](https://github.com/zondax/actions)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 A **production-ready** collection of reusable composite GitHub Actions for Zondax projects, designed for enterprise-scale CI/CD workflows with comprehensive security, testing, and performance optimization.
@@ -15,20 +15,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout with App Auth
-        uses: zondax/zondax-actions/checkout-with-app@v1
+        uses: zondax/checkout-with-app@v1
         with:
           github_app_auth: true
           app_id: ${{ secrets.APP_ID }}
           app_pem: ${{ secrets.APP_PEM }}
 
       - name: Setup Node.js
-        uses: zondax/zondax-actions/setup-node-env@v1
+        uses: zondax/setup-node-env@v1
         with:
           node_version: '20'
           package_manager: 'pnpm'
 
       - name: Setup Ubuntu Packages
-        uses: zondax/zondax-actions/setup-ubuntu-packages@v1
+        uses: zondax/setup-ubuntu-packages@v1
         with:
           packages: "build-essential cmake pkg-config libssl-dev"
 ```
@@ -41,7 +41,7 @@ Checkout repository with optional GitHub App authentication and git configuratio
 
 **Usage:**
 ```yaml
-- uses: zondax/zondax-actions/checkout-with-app@v1
+- uses: zondax/checkout-with-app@v1
   with:
     github_app_auth: true
     github_app_repos: |
@@ -68,7 +68,7 @@ Setup Node.js with package manager (npm, yarn, pnpm, or bun) and install depende
 
 **Usage:**
 ```yaml
-- uses: zondax/zondax-actions/setup-node-env@v1
+- uses: zondax/setup-node-env@v1
   with:
     node_version: '20'
     package_manager: 'pnpm'
@@ -96,7 +96,7 @@ Configure Ubuntu mirrors and install packages for faster, reliable CI builds.
 
 **Usage:**
 ```yaml
-- uses: zondax/zondax-actions/setup-ubuntu-packages@v1
+- uses: zondax/setup-ubuntu-packages@v1
   with:
     packages: |
       - git
@@ -132,7 +132,7 @@ Authenticate with Google Cloud using Workload Identity Federation with optional 
 
 **Usage:**
 ```yaml
-- uses: zondax/zondax-actions/gcp-wif-auth@v1
+- uses: zondax/gcp-wif-auth@v1
   with:
     workload_identity_provider: ${{ vars.PULUMI_DEPLOY_WIF_PROVIDER }}
     project_id: ${{ vars.PULUMI_GCP_PROJECT_ID }}
@@ -196,7 +196,7 @@ jobs:
       package-manager: ${{ steps.setup.outputs.pm }}
     steps:
       - name: Enterprise Checkout
-        uses: zondax/zondax-actions/checkout-with-app@v1
+        uses: zondax/checkout-with-app@v1
         with:
           github_app_auth: true
           github_app_repos: |
@@ -208,7 +208,7 @@ jobs:
 
       - name: Setup Development Environment
         id: setup
-        uses: zondax/zondax-actions/setup-node-env@v1
+        uses: zondax/setup-node-env@v1
         with:
           node_version: '20'
           package_manager: 'pnpm'
@@ -216,7 +216,7 @@ jobs:
           autoinit_env: true
 
       - name: Install System Dependencies
-        uses: zondax/zondax-actions/setup-ubuntu-packages@v1
+        uses: zondax/setup-ubuntu-packages@v1
         with:
           packages: |
             build-essential
@@ -232,7 +232,7 @@ jobs:
     needs: setup
     steps:
       - name: Check Repository Health
-        uses: zondax/zondax-actions/check-large-files@v1
+        uses: zondax/check-large-files@v1
         with:
           max_size: "50MB"
           fail_on_large_files: true
@@ -243,7 +243,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Authenticate with GCP
-        uses: zondax/zondax-actions/gcp-wif-auth@v1
+        uses: zondax/gcp-wif-auth@v1
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           project_id: ${{ vars.GCP_PROJECT_ID }}
@@ -339,13 +339,13 @@ All actions include built-in monitoring:
 
 ```yaml
 # ✅ Recommended: Use major version for automatic updates
-- uses: zondax/zondax-actions/action-name@v1
+- uses: zondax/action-name@v1
 
 # ✅ Conservative: Pin to specific version
-- uses: zondax/zondax-actions/action-name@v1.2.3
+- uses: zondax/action-name@v1.2.3
 
 # ❌ Not recommended: Use main branch
-- uses: zondax/zondax-actions/action-name@main
+- uses: zondax/action-name@main
 ```
 
 ## 🆘 Support & Troubleshooting
@@ -353,8 +353,8 @@ All actions include built-in monitoring:
 ### Getting Help
 
 - 📚 **Documentation**: Comprehensive guides for each action
-- 🐛 **Bug Reports**: [Open an issue](https://github.com/zondax/zondax-actions/issues)
-- 💡 **Feature Requests**: [Discussion forum](https://github.com/zondax/zondax-actions/discussions)
+- 🐛 **Bug Reports**: [Open an issue](https://github.com/zondax/issues)
+- 💡 **Feature Requests**: [Discussion forum](https://github.com/zondax/discussions)
 - 🔒 **Security Issues**: security@zondax.ch
 
 ### Common Issues
@@ -370,7 +370,7 @@ All actions include built-in monitoring:
 
 ```yaml
 # Enable verbose logging for debugging
-- uses: zondax/zondax-actions/setup-ubuntu-packages@v1
+- uses: zondax/setup-ubuntu-packages@v1
   with:
     packages: "build-essential"
     enable_mirrors: true
