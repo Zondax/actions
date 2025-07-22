@@ -1,5 +1,5 @@
 name: 'Setup Node.js Environment'
-description: 'Setup Node.js with package manager (npm, yarn, pnpm, or bun) and install dependencies'
+description: 'Setup Node.js with mise and package manager (npm, yarn, pnpm, or bun) and install dependencies'
 branding:
   icon: 'package'
   color: 'green'
@@ -44,10 +44,6 @@ inputs:
     description: 'Allow package managers to create or modify lockfiles'
     required: false
     default: 'true'
-  use_volta:
-    description: 'Use Volta instead of mise for Node.js management (deprecated)'
-    required: false
-    default: 'false'
 
 outputs:
   pm:
@@ -63,18 +59,10 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Install Volta
-      if: inputs.use_volta == 'true'
-      uses: volta-cli/action@v4
-      with:
-        node-version: ${{ inputs.node_version }}
-    
     - name: Install mise
-      if: inputs.use_volta != 'true'
       uses: jdx/mise-action@v2
     
     - name: Setup Node.js with mise
-      if: inputs.use_volta != 'true'
       shell: bash
       run: |
         mise use --global node@${{ inputs.node_version }}
@@ -103,22 +91,32 @@ runs:
             ;;
         esac
     
-    - name: Install all package managers with Volta
-      if: inputs.use_volta == 'true'
-      shell: bash
-      run: |
-        volta install yarn@${{ inputs.yarn_version }}
-        volta install pnpm@${{ inputs.pnpm_version }}
-        volta install bun@${{ inputs.bun_version }}
-    
     - name: Install all package managers with mise
-      if: inputs.use_volta != 'true'
       shell: bash
       run: |
         mise use --global yarn@${{ inputs.yarn_version }}
         mise use --global pnpm@${{ inputs.pnpm_version }}
         mise use --global bun@${{ inputs.bun_version }}
         mise install
+    
+    - name: Verify package manager installation
+      shell: bash
+      run: |
+        echo "Verifying ${{ inputs.package_manager }} installation..."
+        case "${{ inputs.package_manager }}" in
+          bun)
+            bun --version || { echo "Error: Bun not found in PATH"; exit 1; }
+            ;;
+          yarn)
+            yarn --version || { echo "Error: Yarn not found in PATH"; exit 1; }
+            ;;
+          pnpm)
+            pnpm --version || { echo "Error: PNPM not found in PATH"; exit 1; }
+            ;;
+          npm)
+            npm --version || { echo "Error: NPM not found in PATH"; exit 1; }
+            ;;
+        esac
     
     - name: Install dependencies
       if: inputs.install_deps == 'true'

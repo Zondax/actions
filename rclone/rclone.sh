@@ -37,6 +37,33 @@ INCLUDE_FILTERS="${RCLONE_INCLUDE_FILTERS:-}"
 EXCLUDE_FILTERS="${RCLONE_EXCLUDE_FILTERS:-}"
 CHECKSUM_VERIFY="${RCLONE_CHECKSUM_VERIFY:-true}"
 
+# Global array for rclone options
+declare -a rclone_opts
+
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Helper functions
+log_info() {
+    echo -e "${BLUE}ℹ️  $1${NC}"
+}
+
+log_success() {
+    echo -e "${GREEN}✅ $1${NC}"
+}
+
+log_warning() {
+    echo -e "${YELLOW}⚠️  $1${NC}"
+}
+
+log_error() {
+    echo -e "${RED}❌ $1${NC}"
+}
+
 # Input validation functions
 validate_url() {
     local url="$1"
@@ -194,30 +221,6 @@ case "$OPERATION" in
         exit 1
         ;;
 esac
-
-# Color codes for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-# Helper functions
-log_info() {
-    echo -e "${BLUE}ℹ️  $1${NC}"
-}
-
-log_success() {
-    echo -e "${GREEN}✅ $1${NC}"
-}
-
-log_warning() {
-    echo -e "${YELLOW}⚠️  $1${NC}"
-}
-
-log_error() {
-    echo -e "${RED}❌ $1${NC}"
-}
 
 # Structured logging with JSON output
 log_json() {
@@ -411,55 +414,52 @@ EOF
 
 # Build rclone command options
 build_rclone_options() {
-    local options=""
+    # Use a global array to store options
+    rclone_opts=()
     
     if [[ "$PROGRESS" == "true" ]]; then
-        options="$options --progress"
+        rclone_opts+=(--progress)
     fi
     
     # Dry run mode
     if [[ "$DRY_RUN" == "true" ]]; then
-        options="$options --dry-run"
+        rclone_opts+=(--dry-run)
     fi
     
     # Performance options
-    options="$options --transfers $PARALLEL_TRANSFERS"
-    options="$options --checkers $CHECKERS"
+    rclone_opts+=(--transfers "$PARALLEL_TRANSFERS")
+    rclone_opts+=(--checkers "$CHECKERS")
     
     # Bandwidth limiting
     if [[ -n "$BANDWIDTH_LIMIT" ]]; then
-        options="$options --bwlimit $BANDWIDTH_LIMIT"
+        rclone_opts+=(--bwlimit "$BANDWIDTH_LIMIT")
     fi
     
     # Include filters
     if [[ -n "$INCLUDE_FILTERS" ]]; then
-        # Convert filters to array
-        IFS=' ' read -ra include_filters_array <<< "$(echo "$INCLUDE_FILTERS" | tr '\n' ' ')"
-        for filter in "${include_filters_array[@]}"; do
-            options="$options --include '$filter'"
-        done
+        # Process each filter line
+        while IFS= read -r filter; do
+            [[ -n "$filter" ]] && rclone_opts+=(--include "$filter")
+        done <<< "$INCLUDE_FILTERS"
     fi
     
     # Exclude filters
     if [[ -n "$EXCLUDE_FILTERS" ]]; then
-        # Convert filters to array
-        IFS=' ' read -ra exclude_filters_array <<< "$(echo "$EXCLUDE_FILTERS" | tr '\n' ' ')"
-        for filter in "${exclude_filters_array[@]}"; do
-            options="$options --exclude '$filter'"
-        done
+        # Process each filter line
+        while IFS= read -r filter; do
+            [[ -n "$filter" ]] && rclone_opts+=(--exclude "$filter")
+        done <<< "$EXCLUDE_FILTERS"
     fi
     
     # Checksum verification
     if [[ "$CHECKSUM_VERIFY" == "true" ]]; then
-        options="$options --checksum"
+        rclone_opts+=(--checksum)
     fi
     
     # Additional performance optimizations
-    options="$options --multi-thread-streams 4"
-    options="$options --use-list-r"
-    options="$options --fast-list"
-    
-    echo "$options"
+    rclone_opts+=(--multi-thread-streams 4)
+    rclone_opts+=(--use-list-r)
+    rclone_opts+=(--fast-list)
 }
 
 # Execute generic rclone operations
@@ -476,8 +476,8 @@ execute_sync_operation() {
     log_info "Executing rclone $operation from $source to $destination$dry_run_msg"
     log_json "INFO" "Starting operation" "\"operation\":\"$operation\",\"source\":\"$source\",\"destination\":\"$destination\",\"dry_run\":$DRY_RUN"
     
-    local options
-    options=$(build_rclone_options)
+    # Build options array
+    build_rclone_options
     local bytes_transferred=0
     local files_transferred=0
     local errors=0
@@ -486,7 +486,7 @@ execute_sync_operation() {
     
     case "$operation" in
         "sync")
-            if execute_rclone_with_retry sync "$source" "$destination" $options --stats 1s --stats-one-line 2>&1 | tee /tmp/rclone_output.log; then
+            if execute_rclone_with_retry sync "$source" "$destination" "${rclone_opts[@]}" --stats 1s --stats-one-line 2>&1 | tee /tmp/rclone_output.log; then
                 log_success "Sync completed successfully"
                 echo "operation-result=success" >> "$GITHUB_OUTPUT"
             else
@@ -496,7 +496,7 @@ execute_sync_operation() {
             fi
             ;;
         "move")
-            if execute_rclone_with_retry move "$source" "$destination" $options --stats 1s --stats-one-line 2>&1 | tee /tmp/rclone_output.log; then
+            if execute_rclone_with_retry move "$source" "$destination" "${rclone_opts[@]}" --stats 1s --stats-one-line 2>&1 | tee /tmp/rclone_output.log; then
                 log_success "Move completed successfully"
                 echo "operation-result=success" >> "$GITHUB_OUTPUT"
             else
@@ -547,10 +547,10 @@ execute_delete_operation() {
     
     log_info "Executing rclone delete on $target"
     
-    local options
-    options=$(build_rclone_options)
+    # Build options array
+    build_rclone_options
     
-    if execute_rclone_with_retry delete "$target" $options; then
+    if execute_rclone_with_retry delete "$target" "${rclone_opts[@]}"; then
         log_success "Delete completed successfully"
         echo "operation-result=success" >> "$GITHUB_OUTPUT"
     else
@@ -655,9 +655,9 @@ restore_cache() {
     
     if [[ "$COMPRESSION" == "true" ]]; then
         log_info "Downloading compressed cache..."
-        local options
-    options=$(build_rclone_options)
-        if ! execute_rclone_with_retry copy "$cache_path/cache.tar.gz" "$temp_dir" $options; then
+        # Build options array
+        build_rclone_options
+        if ! execute_rclone_with_retry copy "$cache_path/cache.tar.gz" "$temp_dir" "${rclone_opts[@]}"; then
             log_error "Failed to download cache"
             rm -rf "$temp_dir"
             return 1
@@ -671,15 +671,15 @@ restore_cache() {
         fi
     else
         log_info "Downloading cache directories..."
-        local options
-    options=$(build_rclone_options)
+        # Build options array
+        build_rclone_options
         
         for path in "${paths_array[@]}"; do
             log_info "Restoring: $path"
             local parent_dir=$(dirname "$path")
             mkdir -p "$parent_dir"
             
-            if ! execute_rclone_with_retry copy "$cache_path/$(basename $path)" "$parent_dir/$(basename $path)" $options; then
+            if ! execute_rclone_with_retry copy "$cache_path/$(basename $path)" "$parent_dir/$(basename $path)" "${rclone_opts[@]}"; then
                 log_warning "Failed to restore: $path"
             fi
         done
@@ -740,9 +740,9 @@ save_cache() {
         fi
         
         log_info "Uploading compressed cache..."
-        local options
-    options=$(build_rclone_options)
-        if ! execute_rclone_with_retry copy "$temp_dir/cache.tar.gz" "$cache_path/" $options; then
+        # Build options array
+        build_rclone_options
+        if ! execute_rclone_with_retry copy "$temp_dir/cache.tar.gz" "$cache_path/" "${rclone_opts[@]}"; then
             log_error "Failed to upload cache"
             rm -rf "$temp_dir"
             return 1
@@ -752,14 +752,14 @@ save_cache() {
         bytes_transferred=$(stat -c%s "$temp_dir/cache.tar.gz" 2>/dev/null || echo "0")
     else
         log_info "Uploading cache directories..."
-        local options
-    options=$(build_rclone_options)
+        # Build options array
+        build_rclone_options
         
         local uploaded=false
         for path in "${paths_array[@]}"; do
             if [[ -e "$path" ]]; then
                 log_info "Saving: $path"
-                if execute_rclone_with_retry copy "$path" "$cache_path/$(basename $path)" $options; then
+                if execute_rclone_with_retry copy "$path" "$cache_path/$(basename $path)" "${rclone_opts[@]}"; then
                     uploaded=true
                 else
                     log_warning "Failed to save: $path"
