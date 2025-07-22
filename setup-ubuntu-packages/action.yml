@@ -72,12 +72,58 @@ runs:
         CACHE_TIMEOUT: ${{ inputs.cache_timeout }}
       run: |
         set -euo pipefail
+        
+        # Debug logging
+        echo "=== Setup Ubuntu Packages Action ==="
+        echo "GitHub Action Path: ${{ github.action_path }}"
+        echo "Current Directory: $(pwd)"
+        echo "Action Repository: ${{ github.action_repository }}"
+        
+        # List directory structure for debugging
+        echo ""
+        echo "=== Directory Structure ==="
+        ls -la "${{ github.action_path }}" || echo "Failed to list action path"
+        
         # Normalize package lists to space-separated strings
         # Remove YAML list markers (-) and convert newlines to spaces
         export PACKAGES="$(echo "${PACKAGES}" | sed 's/^[[:space:]]*-[[:space:]]*//' | tr '\n' ' ')"
         export EXTRA_PACKAGES="$(echo "${EXTRA_PACKAGES}" | sed 's/^[[:space:]]*-[[:space:]]*//' | tr '\n' ' ')"
+        
+        echo ""
+        echo "=== Package Configuration ==="
+        echo "Packages: ${PACKAGES}"
+        echo "Extra Packages: ${EXTRA_PACKAGES}"
+        
+        # Auto-discover the script using find
+        echo ""
+        echo "=== Searching for setup-ubuntu-packages.sh ==="
+        
+        # Search for the script in the action path and its subdirectories
+        SCRIPT_PATH=$(find "${{ github.action_path }}" -name "setup-ubuntu-packages.sh" -type f 2>/dev/null | head -1)
+        
+        if [ -z "$SCRIPT_PATH" ]; then
+          echo "ERROR: Could not find setup-ubuntu-packages.sh"
+          echo ""
+          echo "Searched in: ${{ github.action_path }}"
+          echo ""
+          echo "Full directory tree:"
+          find "${{ github.action_path }}" -type f -name "*.sh" 2>/dev/null || echo "No .sh files found"
+          echo ""
+          echo "All files in action path:"
+          find "${{ github.action_path }}" -type f 2>/dev/null || echo "No files found"
+          exit 1
+        fi
+        
+        echo "Found script at: $SCRIPT_PATH"
+        
         # Make script executable
-        chmod +x "${{ github.action_path }}/setup-ubuntu-packages.sh"
+        echo ""
+        echo "=== Making script executable ==="
+        chmod +x "$SCRIPT_PATH"
+        ls -la "$SCRIPT_PATH"
+        
         # Run the script
-        echo "Executing: ${{ github.action_path }}/setup-ubuntu-packages.sh"
-        "${{ github.action_path }}/setup-ubuntu-packages.sh"
+        echo ""
+        echo "=== Executing Script ==="
+        echo "Command: $SCRIPT_PATH"
+        "$SCRIPT_PATH"
