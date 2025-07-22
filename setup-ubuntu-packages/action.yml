@@ -79,6 +79,14 @@ runs:
           SUDO="sudo"
         fi
         
+        # Check if ca-certificates is installed (needed for SSL verification)
+        if ! dpkg -l ca-certificates 2>/dev/null | grep -q "^ii"; then
+          echo "ca-certificates not found, installing for SSL verification..."
+          $SUDO apt-get update -qq || true
+          DEBIAN_FRONTEND=noninteractive $SUDO apt-get install -y --no-install-recommends ca-certificates
+          echo "ca-certificates installed"
+        fi
+        
         # Normalize package lists - remove YAML list markers and newlines
         PACKAGES="$(echo "${PACKAGES}" | sed 's/^[[:space:]]*-[[:space:]]*//' | tr '\n' ' ')"
         EXTRA_PACKAGES="$(echo "${EXTRA_PACKAGES}" | sed 's/^[[:space:]]*-[[:space:]]*//' | tr '\n' ' ')"
