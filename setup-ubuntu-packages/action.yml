@@ -98,19 +98,41 @@ runs:
         echo ""
         echo "=== Searching for setup-ubuntu-packages.sh ==="
         
-        # Search for the script in the action path and its subdirectories
-        SCRIPT_PATH=$(find "${{ github.action_path }}" -name "setup-ubuntu-packages.sh" -type f 2>/dev/null | head -1)
+        # GitHub Actions limitation: subdirectory actions lose their structure
+        # We need to search in the parent directory when used as subdirectory action
+        SEARCH_PATHS=(
+          "${{ github.action_path }}"
+          "${{ github.action_path }}/.."
+          "${{ github.action_path }}/../.."
+        )
+        
+        SCRIPT_PATH=""
+        for search_dir in "${SEARCH_PATHS[@]}"; do
+          echo "Searching in: $search_dir"
+          if [ -d "$search_dir" ]; then
+            found=$(find "$search_dir" -name "setup-ubuntu-packages.sh" -type f 2>/dev/null | head -1)
+            if [ -n "$found" ]; then
+              SCRIPT_PATH="$found"
+              break
+            fi
+          fi
+        done
         
         if [ -z "$SCRIPT_PATH" ]; then
           echo "ERROR: Could not find setup-ubuntu-packages.sh"
           echo ""
-          echo "Searched in: ${{ github.action_path }}"
+          echo "GitHub Action Path: ${{ github.action_path }}"
+          echo "This appears to be a subdirectory action issue."
           echo ""
-          echo "Full directory tree:"
-          find "${{ github.action_path }}" -type f -name "*.sh" 2>/dev/null || echo "No .sh files found"
+          echo "Debugging information:"
+          echo "1. Parent directory contents:"
+          ls -la "${{ github.action_path }}/.." 2>/dev/null || echo "Cannot list parent directory"
           echo ""
-          echo "All files in action path:"
-          find "${{ github.action_path }}" -type f 2>/dev/null || echo "No files found"
+          echo "2. Repository root contents:"
+          ls -la "${{ github.action_path }}/../.." 2>/dev/null || echo "Cannot list repository root"
+          echo ""
+          echo "3. Find all .sh files from parent:"
+          find "${{ github.action_path }}/.." -name "*.sh" -type f 2>/dev/null || echo "No .sh files found"
           exit 1
         fi
         
