@@ -118,38 +118,19 @@ runs:
             ;;
         esac
     
-    - name: Setup pnpm global directory
-      if: inputs.package_manager == 'pnpm'
+    - name: Install TypeScript globally with npm
       shell: bash
       run: |
-        echo "Setting up pnpm global directory..."
-        export PNPM_HOME="$HOME/.local/share/pnpm"
-        export PATH="$PNPM_HOME:$PATH"
-        echo "PNPM_HOME=$PNPM_HOME" >> $GITHUB_ENV
-        echo "$PNPM_HOME" >> $GITHUB_PATH
-        pnpm setup
-    
-    - name: Install TypeScript globally
-      shell: bash
-      run: |
-        echo "Installing TypeScript globally..."
-        case "${{ inputs.package_manager }}" in
-          bun)
-            bun install -g typescript
-            ;;
-          yarn)
-            yarn global add typescript
-            ;;
-          pnpm)
-            # Ensure PNPM_HOME is in PATH for this step
-            export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"
-            export PATH="$PNPM_HOME:$PATH"
-            pnpm add -g typescript
-            ;;
-          npm)
-            npm install -g typescript
-            ;;
-        esac
+        echo "Installing TypeScript globally with npm..."
+        npm install -g typescript
+        
+        # Add npm global bin to PATH for subsequent steps
+        NPM_GLOBAL_BIN="$(npm bin -g)"
+        echo "$NPM_GLOBAL_BIN" >> $GITHUB_PATH
+        
+        # Verify TypeScript is accessible
+        echo "Verifying TypeScript installation..."
+        which tsc || { echo "Error: tsc binary not found in PATH"; exit 1; }
         tsc --version || { echo "Error: TypeScript not found in PATH"; exit 1; }
     
     - name: Install dependencies
