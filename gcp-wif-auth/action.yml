@@ -1,5 +1,8 @@
 name: 'GCP Workload Identity Federation Authentication'
 description: 'Authenticate with Google Cloud using Workload Identity Federation with optional JWT debugging'
+branding:
+  icon: 'cloud'
+  color: 'blue'
 inputs:
   workload_identity_provider:
     description: 'Workload Identity Provider resource name'

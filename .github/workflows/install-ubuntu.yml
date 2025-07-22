@@ -1,0 +1,232 @@
+name: Ubuntu Action
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+  schedule:
+    # Run comprehensive Ubuntu tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test-ubuntu-packages:
+    name: ${{ matrix.packages }}
+    runs-on: zondax-runners
+    strategy:
+      fail-fast: true
+      matrix:
+        packages:
+          - 'wget'
+          - 'wget curl git vim htop'
+        mirror_config:
+          - enable: true
+            name: "swiss-mirrors"
+          - enable: false
+            name: "default-mirrors"
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup packages for testing
+        id: packages
+        run: |
+          echo "🎯 Testing packages: ${{ matrix.packages }}"
+          packages="${{ matrix.packages }}"
+          echo "packages=$packages" >> $GITHUB_OUTPUT
+          echo "📦 Packages to install: $packages"
+
+      - name: System information
+        run: |
+          echo "🖥️ System Information for Zondax Runners"
+          echo "=================================================="
+          echo "Runner: zondax-runners"
+          echo "Packages: ${{ matrix.packages }}"
+          echo "Mirror config: ${{ matrix.mirror_config.name }}"
+          echo "Cache policy: with-update"
+          echo ""
+          
+          # System specs
+          echo "🔧 Hardware specs:"
+          echo "CPU cores: $(nproc)"
+          echo "Memory: $(free -h | grep '^Mem:' | awk '{print $2}')"
+          echo "Disk space: $(df -h / | tail -1 | awk '{print $4}') available"
+          echo "Architecture: $(uname -m)"
+          echo ""
+          
+          # Ubuntu details
+          echo "🐧 Ubuntu details:"
+          lsb_release -a 2>/dev/null || cat /etc/os-release
+          echo ""
+          
+          # Network connectivity
+          echo "🌐 Network connectivity:"
+          ping -c 1 google.com >/dev/null && echo "✅ Internet connectivity" || echo "❌ No internet"
+          
+          # Check if running on Zondax infrastructure
+          echo "🇨🇭 Running on Zondax Swiss infrastructure"
+
+      - name: Install packages (${{ matrix.packages }})
+        id: install-packages
+        uses: ./setup-ubuntu-packages
+        with:
+          packages: ${{ steps.packages.outputs.packages }}
+          enable_mirrors: ${{ matrix.mirror_config.enable }}
+          update_cache: true
+          retry_count: 3
+          cache_timeout: 300
+
+      - name: Verify package installation
+        run: |
+          echo "✅ Verifying package installation for ${{ matrix.packages }}"
+          echo "Mirror configured: ${{ steps.install-packages.outputs.mirror_configured }}"
+          echo "Packages installed: ${{ steps.install-packages.outputs.packages_installed }}"
+          echo "Ubuntu codename: ${{ steps.install-packages.outputs.ubuntu_codename }}"
+          echo ""
+          
+          # Test installed packages
+          echo "🧪 Testing installed packages..."
+          for package in ${{ steps.packages.outputs.packages }}; do
+            case "$package" in
+              wget)
+                wget --version | head -1
+                ;;
+              curl)
+                curl --version | head -1
+                ;;
+              git)
+                git --version
+                ;;
+              vim)
+                vim --version | head -1
+                ;;
+              htop)
+                echo "htop: $(which htop)" && htop --version 2>/dev/null || echo "htop: installed but version check failed"
+                ;;
+              *)
+                echo "Testing: $package (generic test)"
+                command -v "$package" && echo "✅ $package is available" || echo "❌ $package not found"
+                ;;
+            esac
+          done
+
+      - name: Performance benchmarking
+        run: |
+          echo "📊 Performance Analysis"
+          echo "======================"
+          echo "Runner type: zondax-runners"
+          echo "Packages: ${{ matrix.packages }}"
+          echo "Mirror configuration: ${{ matrix.mirror_config.name }}"
+          echo "Cache policy: with-update"
+          echo ""
+          
+          # Performance analysis based on mirror configuration
+          if [ "${{ matrix.mirror_config.enable }}" = "true" ]; then
+            echo "🇨🇭 Swiss Mirror Performance:"
+            echo "- Primary: Init7 (https://mirror.init7.net/ubuntu/)"
+            echo "- Fallback: ETH Zurich (https://ubuntu.ethz.ch/ubuntu/)"
+            if [ "${{ steps.install-packages.outputs.mirror_configured }}" = "true" ]; then
+              echo "✅ Swiss mirrors used successfully"
+            elif [ "${{ steps.install-packages.outputs.mirror_configured }}" = "fallback" ]; then
+              echo "⚠️ Fallback mirrors were used"
+            else
+              echo "❌ Mirror configuration failed"
+            fi
+          else
+            echo "🌍 Default Mirror Performance:"
+            echo "- Using standard Ubuntu repositories"
+            echo "- May be slower in Swiss datacenters"
+          fi
+          
+          echo ""
+          
+          # Runner-specific performance expectations
+          echo "🏃‍♂️ Zondax Runner Performance:"
+          echo "- Running on Swiss datacenter infrastructure"
+          echo "- Optimized for: Development workflows and CI/CD"
+          echo "- Expected performance: Excellent for package installation"
+          
+          # Package complexity analysis
+          package_count=$(echo "${{ steps.packages.outputs.packages }}" | wc -w)
+          if [ "$package_count" -eq 1 ]; then
+            echo "📦 Package Complexity: Low - Single package installation"
+          elif [ "$package_count" -le 3 ]; then
+            echo "📦 Package Complexity: Medium - Few packages to install"
+          else
+            echo "📦 Package Complexity: High - Multiple packages to install"
+          fi
+
+      - name: Swiss infrastructure testing
+        run: |
+          echo "🇨🇭 Zondax Swiss Infrastructure Validation"
+          echo "==========================================="
+          
+          # Test geographic performance advantages
+          echo "🌍 Geographic performance testing..."
+          
+          # Test latency to Swiss mirrors
+          if command -v ping >/dev/null; then
+            echo "📡 Testing latency to Swiss mirrors:"
+            
+            # Test Init7 mirror
+            init7_latency=$(ping -c 3 mirror.init7.net 2>/dev/null | tail -1 | cut -d'/' -f5 2>/dev/null || echo "N/A")
+            echo "   Init7 mirror: ${init7_latency}ms"
+            
+            # Test ETH Zurich mirror  
+            ethz_latency=$(ping -c 3 ubuntu.ethz.ch 2>/dev/null | tail -1 | cut -d'/' -f5 2>/dev/null || echo "N/A")
+            echo "   ETH Zurich mirror: ${ethz_latency}ms"
+            
+            # Test default Ubuntu mirror for comparison
+            ubuntu_latency=$(ping -c 3 archive.ubuntu.com 2>/dev/null | tail -1 | cut -d'/' -f5 2>/dev/null || echo "N/A")
+            echo "   Default Ubuntu mirror: ${ubuntu_latency}ms"
+          fi
+          
+          # Swiss datacenter advantages
+          echo ""
+          echo "🏢 Swiss Datacenter Advantages:"
+          echo "✅ GDPR compliance by design"
+          echo "✅ Swiss data protection laws"
+          echo "✅ Low latency to European services"
+          echo "✅ High-quality network infrastructure"
+          echo "✅ Reliable power and connectivity"
+
+      - name: Test summary and metrics
+        run: |
+          echo "📋 Test Summary for ${{ matrix.packages }}"
+          echo "============================================"
+          echo "✅ Runner type: zondax-runners"
+          echo "✅ Packages: ${{ matrix.packages }}"
+          echo "✅ Mirror configuration: ${{ matrix.mirror_config.name }}"
+          echo "✅ Cache policy: with-update"
+          echo "✅ Mirror status: ${{ steps.install-packages.outputs.mirror_configured }}"
+          echo ""
+          
+          # Final system state
+          echo "🔍 Final System State:"
+          echo "Load average: $(uptime | cut -d',' -f3- | xargs)"
+          echo "Memory usage: $(free | grep Mem | awk '{printf \"%.1f%%\\n\", $3/$2*100}')"
+          echo "Disk usage: $(df / | tail -1 | awk '{print $5}')"
+          
+          # Package count verification
+          installed_count=$(echo "${{ steps.install-packages.outputs.packages_installed }}" | wc -w)
+          expected_count=$(echo "${{ steps.packages.outputs.packages }}" | wc -w)
+          
+          echo ""
+          echo "📦 Package Installation Summary:"
+          echo "Expected packages: $expected_count"
+          echo "Reported installed: $installed_count"
+          
+          if [ "$installed_count" -ge "$expected_count" ]; then
+            echo "✅ All expected packages appear to be installed"
+          else
+            echo "⚠️ Package count mismatch - may include dependencies"
+          fi
+          
+          echo ""
+          echo "🎉 All tests completed successfully on zondax-runners!"

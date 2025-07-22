@@ -1,5 +1,8 @@
 name: 'Setup Node.js Environment'
-description: 'Setup Node.js with package manager (npm, yarn, pnpm, or bun) and install dependencies'
+description: 'Setup Node.js with mise and package manager (npm, yarn, pnpm, or bun) and install dependencies'
+branding:
+  icon: 'package'
+  color: 'green'
 inputs:
   node_version:
     description: 'Node.js version to install'
@@ -37,6 +40,10 @@ inputs:
     description: 'Run env:init:ci script after installing dependencies'
     required: false
     default: 'false'
+  allow_lockfile_modifications:
+    description: 'Allow package managers to create or modify lockfiles'
+    required: false
+    default: 'true'
 
 outputs:
   pm:
@@ -52,10 +59,14 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Install Volta
-      uses: volta-cli/action@v4
-      with:
-        node-version: ${{ inputs.node_version }}
+    - name: Install mise
+      uses: jdx/mise-action@v2
+    
+    - name: Setup Node.js with mise
+      shell: bash
+      run: |
+        mise use --global node@${{ inputs.node_version }}
+        mise install
     
     - name: Set package manager variables
       id: set-pm
@@ -80,19 +91,64 @@ runs:
             ;;
         esac
     
-    - name: Install all package managers with Volta
+    - name: Install all package managers with mise
       shell: bash
       run: |
-        volta install yarn@${{ inputs.yarn_version }}
-        volta install pnpm@${{ inputs.pnpm_version }}
-        volta install bun@${{ inputs.bun_version }}
+        mise use --global yarn@${{ inputs.yarn_version }}
+        mise use --global pnpm@${{ inputs.pnpm_version }}
+        mise use --global bun@${{ inputs.bun_version }}
+        mise install
+    
+    - name: Verify package manager installation
+      shell: bash
+      run: |
+        echo "Verifying ${{ inputs.package_manager }} installation..."
+        case "${{ inputs.package_manager }}" in
+          bun)
+            bun --version || { echo "Error: Bun not found in PATH"; exit 1; }
+            ;;
+          yarn)
+            yarn --version || { echo "Error: Yarn not found in PATH"; exit 1; }
+            ;;
+          pnpm)
+            pnpm --version || { echo "Error: PNPM not found in PATH"; exit 1; }
+            ;;
+          npm)
+            npm --version || { echo "Error: NPM not found in PATH"; exit 1; }
+            ;;
+        esac
     
     - name: Install dependencies
       if: inputs.install_deps == 'true'
       shell: bash
       working-directory: ${{ inputs.working_directory }}
       run: |
-        ${{ steps.set-pm.outputs.pm }} install
+        if [[ "${{ inputs.allow_lockfile_modifications }}" == "false" ]]; then
+          case "${{ inputs.package_manager }}" in
+            yarn)
+              # For Yarn, use --immutable to prevent any lockfile changes
+              ${{ steps.set-pm.outputs.pm }} install --immutable || ${{ steps.set-pm.outputs.pm }} install --frozen-lockfile
+              ;;
+            pnpm)
+              ${{ steps.set-pm.outputs.pm }} install --frozen-lockfile
+              ;;
+            bun)
+              ${{ steps.set-pm.outputs.pm }} install --frozen-lockfile
+              ;;
+            *)
+              # npm - use ci command if package-lock.json exists
+              if [[ -f "package-lock.json" ]]; then
+                ${{ steps.set-pm.outputs.pm }} ci
+              else
+                echo "Warning: No package-lock.json found, using regular install"
+                ${{ steps.set-pm.outputs.pm }} install
+              fi
+              ;;
+          esac
+        else
+          # Allow modifications - normal install
+          ${{ steps.set-pm.outputs.pm }} install
+        fi
     
     - name: Initialize environment
       if: inputs.autoinit_env == 'true'

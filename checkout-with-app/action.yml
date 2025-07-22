@@ -1,5 +1,8 @@
 name: 'Checkout with GitHub App'
 description: 'Checkout repository with optional GitHub App authentication and git config'
+branding:
+  icon: 'git-branch'
+  color: 'gray-dark'
 inputs:
   github_app_auth:
     description: 'Use GitHub App Token'
@@ -72,9 +75,9 @@ runs:
       shell: bash
       run: |
         if [[ "${{ inputs.use_sudo }}" == "true" ]]; then
-          sudo git config --system --add safe.directory '*'
+          sudo git config --global --add safe.directory '*'
         else
-          git config --system --add safe.directory '*'
+          git config --global --add safe.directory '*'
         fi
     
     - name: Configure Git for private repos

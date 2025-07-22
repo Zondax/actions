@@ -1,0 +1,66 @@
+name: Node.js Action
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+  schedule:
+    # Run comprehensive tests daily at 1 AM UTC
+    - cron: '0 1 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-node-environment:
+    name: Node ${{ matrix.node_version }} | ${{ matrix.package_manager }}
+    runs-on: zondax-runners
+    strategy:
+      fail-fast: true
+      matrix:
+        # Multi-dimensional matrix with Node versions, package managers, and runner types
+        node_version: 
+          - '22'
+          - '24'
+        package_manager:
+          - npm
+          - yarn
+          - pnpm
+          - bun
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+
+      - name: Setup Node.js ${{ matrix.node_version }} with ${{ matrix.package_manager }}
+        id: setup-node
+        uses: ./setup-node-env
+        with:
+          node_version: ${{ matrix.node_version }}
+          package_manager: ${{ matrix.package_manager }}
+          cache_dependencies: true
+          install_deps: false
+          autoinit_env: false
+
+      - name: Verify Installation
+        run: |
+          # Check Node.js
+          node_version=$(node --version)
+          echo "Node.js: $node_version"
+          [[ "$node_version" == v${{ matrix.node_version }}.* ]] || exit 1
+          
+          # Check package manager
+          case "${{ matrix.package_manager }}" in
+            npm)  npm --version  ;;
+            yarn) yarn --version ;;
+            pnpm) pnpm --version ;;
+            bun)  bun --version  ;;
+          esac
+          
+          echo "✅ Node.js ${{ matrix.node_version }} + ${{ matrix.package_manager }} working!"
+
+

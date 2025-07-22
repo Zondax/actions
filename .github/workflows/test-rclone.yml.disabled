@@ -1,0 +1,161 @@
+name: Test Rclone Action
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, dev ]
+    paths:
+      - 'rclone/**'
+      - '.github/workflows/test-rclone.yml'
+
+jobs:
+  test-cache-operations:
+    name: Test Cache Operations
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Create test directories
+        run: |
+          mkdir -p test-cache/dir1
+          mkdir -p test-cache/dir2
+          echo "Test file 1" > test-cache/dir1/file1.txt
+          echo "Test file 2" > test-cache/dir2/file2.txt
+          date > test-cache/timestamp.txt
+          
+      # Test cache operations (backward compatibility)
+      - name: Restore cache
+        id: cache
+        uses: ./rclone
+        with:
+          operation: copy  # Explicitly specify copy operation
+          mode: restore
+          key: test-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            test-${{ runner.os }}-
+            test-
+          paths: |
+            test-cache
+            ~/.npm
+          endpoint: ${{ secrets.S3_ENDPOINT }}
+          bucket: ${{ secrets.S3_BUCKET }}
+          access-key: ${{ secrets.S3_ACCESS_KEY }}
+          secret-key: ${{ secrets.S3_SECRET_KEY }}
+          
+      - name: Show cache status
+        run: |
+          echo "Cache hit: ${{ steps.cache.outputs.cache-hit }}"
+          echo "Cache key used: ${{ steps.cache.outputs.cache-key }}"
+          echo "Operation result: ${{ steps.cache.outputs.operation-result }}"
+          echo "Bytes transferred: ${{ steps.cache.outputs.bytes-transferred }}"
+          
+          if [[ "${{ steps.cache.outputs.cache-hit }}" == "true" ]]; then
+            echo "📁 Cached files:"
+            ls -la test-cache/
+          fi
+          
+      - name: Save cache
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: ./rclone
+        with:
+          operation: copy
+          mode: save
+          key: test-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
+          paths: |
+            test-cache
+            ~/.npm
+          endpoint: ${{ secrets.S3_ENDPOINT }}
+          bucket: ${{ secrets.S3_BUCKET }}
+          access-key: ${{ secrets.S3_ACCESS_KEY }}
+          secret-key: ${{ secrets.S3_SECRET_KEY }}
+
+  test-sync-operations:
+    name: Test Sync Operations
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Create test files for sync
+        run: |
+          mkdir -p sync-test
+          echo "Sync test file 1" > sync-test/file1.txt
+          echo "Sync test file 2" > sync-test/file2.txt
+          date > sync-test/timestamp.txt
+          
+      # Test sync operation
+      - name: Sync files to S3
+        id: sync
+        uses: ./rclone
+        with:
+          operation: sync
+          source: ./sync-test
+          destination: "remote:${{ secrets.S3_BUCKET }}/sync-test/"
+          endpoint: ${{ secrets.S3_ENDPOINT }}
+          bucket: ${{ secrets.S3_BUCKET }}
+          access-key: ${{ secrets.S3_ACCESS_KEY }}
+          secret-key: ${{ secrets.S3_SECRET_KEY }}
+          
+      - name: Show sync status
+        run: |
+          echo "Sync result: ${{ steps.sync.outputs.operation-result }}"
+          echo "Bytes transferred: ${{ steps.sync.outputs.bytes-transferred }}"
+
+  test-size-operations:
+    name: Test Size Operations
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+          
+      # Test size operation
+      - name: Get bucket size
+        id: size
+        uses: ./rclone
+        with:
+          operation: size
+          source: "remote:${{ secrets.S3_BUCKET }}/"
+          endpoint: ${{ secrets.S3_ENDPOINT }}
+          bucket: ${{ secrets.S3_BUCKET }}
+          access-key: ${{ secrets.S3_ACCESS_KEY }}
+          secret-key: ${{ secrets.S3_SECRET_KEY }}
+          
+      - name: Show size results
+        run: |
+          echo "Size operation result: ${{ steps.size.outputs.operation-result }}"
+          echo "Total bytes: ${{ steps.size.outputs.bytes-transferred }}"
+
+  test-backward-compatibility:
+    name: Test Backward Compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Create test files
+        run: |
+          mkdir -p compat-test
+          echo "Compatibility test" > compat-test/test.txt
+          date > compat-test/timestamp.txt
+          
+      # Test backward compatibility (no operation specified, should default to copy)
+      - name: Test without operation parameter
+        id: compat
+        uses: ./rclone
+        with:
+          # No operation specified - should default to copy
+          mode: restore-save
+          key: compat-${{ runner.os }}-${{ github.run_id }}
+          paths: |
+            compat-test
+          endpoint: ${{ secrets.S3_ENDPOINT }}
+          bucket: ${{ secrets.S3_BUCKET }}
+          access-key: ${{ secrets.S3_ACCESS_KEY }}
+          secret-key: ${{ secrets.S3_SECRET_KEY }}
+          
+      - name: Show compatibility results
+        run: |
+          echo "Compatibility test result: ${{ steps.compat.outputs.operation-result }}"
+          echo "Cache hit: ${{ steps.compat.outputs.cache-hit }}"
+          echo "Cache key: ${{ steps.compat.outputs.cache-key }}"
