@@ -72,8 +72,6 @@ runs:
     - name: Install mise
       if: inputs.use_volta != 'true'
       uses: jdx/mise-action@v2
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
     
     - name: Setup Node.js with mise
       if: inputs.use_volta != 'true'
