@@ -95,48 +95,59 @@ runs:
         echo "Extra Packages: ${EXTRA_PACKAGES}"
         
         echo ""
-        echo "=== Searching for setup-ubuntu-packages.sh ==="
+        echo "=== Downloading setup-ubuntu-packages.sh from GitHub ==="
         
-        # Search for the script in the GitHub Actions checkout directory
-        echo "Searching in /home/runner/_work/_actions..."
-        SCRIPT_PATH=$(find /home/runner/_work/_actions -name "setup-ubuntu-packages.sh" -type f 2>/dev/null | head -1)
+        # Download the script directly from GitHub
+        # This bypasses the subdirectory action limitation
+        TEMP_SCRIPT="/tmp/setup-ubuntu-packages-$$.sh"
         
-        if [ -n "$SCRIPT_PATH" ]; then
-          echo "Found script at: $SCRIPT_PATH"
+        # Determine the ref to use (default to v1 if not specified)
+        ACTION_REF="${{ github.action_ref }}"
+        if [ -z "$ACTION_REF" ]; then
+          ACTION_REF="v1"
+        fi
+        
+        echo "Downloading script from ref: $ACTION_REF"
+        
+        # Download the script using curl or wget
+        SCRIPT_URL="https://raw.githubusercontent.com/zondax/actions/$ACTION_REF/setup-ubuntu-packages/setup-ubuntu-packages.sh"
+        echo "URL: $SCRIPT_URL"
+        
+        if command -v curl >/dev/null 2>&1; then
+          echo "Using curl to download..."
+          curl -sSL "$SCRIPT_URL" -o "$TEMP_SCRIPT" || {
+            echo "ERROR: Failed to download script from $SCRIPT_URL"
+            echo "HTTP response:"
+            curl -sI "$SCRIPT_URL"
+            exit 1
+          }
+        elif command -v wget >/dev/null 2>&1; then
+          echo "Using wget to download..."
+          wget -q "$SCRIPT_URL" -O "$TEMP_SCRIPT" || {
+            echo "ERROR: Failed to download script from $SCRIPT_URL"
+            exit 1
+          }
         else
-          echo "Script not found. Listing all files in actions directory for debugging:"
-          echo ""
-          echo "All .sh files:"
-          find /home/runner/_work/_actions -name "*.sh" -type f 2>/dev/null || echo "No .sh files found"
-          echo ""
-          echo "All .yml and .yaml files:"
-          find /home/runner/_work/_actions -name "*.yml" -o -name "*.yaml" -type f 2>/dev/null | head -20 || echo "No YAML files found"
-          echo ""
-          echo "Directory structure:"
-          find /home/runner/_work/_actions -type d 2>/dev/null | head -20 || echo "Cannot list directories"
-          echo ""
-          echo "ERROR: Could not find setup-ubuntu-packages.sh"
-          echo ""
-          echo "This is likely because GitHub Actions doesn't support the syntax: owner/repo/subdirectory@ref"
-          echo "The '/setup-ubuntu-packages' part is being ignored by GitHub."
-          echo ""
-          echo "Solutions:"
-          echo "  1. Move each action to its own repository: zondax/setup-ubuntu-packages@v1"
-          echo "  2. Reference the action at the repository root with a dispatcher"
-          echo "  3. Use relative paths if in the same repository: ./setup-ubuntu-packages"
+          echo "ERROR: Neither curl nor wget is available"
           exit 1
         fi
         
-        echo "Found script at: $SCRIPT_PATH"
+        # Verify the script was downloaded
+        if [ ! -f "$TEMP_SCRIPT" ] || [ ! -s "$TEMP_SCRIPT" ]; then
+          echo "ERROR: Script download failed or file is empty"
+          exit 1
+        fi
+        
+        echo "Script downloaded successfully to: $TEMP_SCRIPT"
+        echo "File size: $(stat -c%s "$TEMP_SCRIPT" 2>/dev/null || stat -f%z "$TEMP_SCRIPT" 2>/dev/null || echo "unknown") bytes"
         
         # Make script executable
-        echo ""
-        echo "=== Making script executable ==="
-        chmod +x "$SCRIPT_PATH"
-        ls -la "$SCRIPT_PATH"
+        chmod +x "$TEMP_SCRIPT"
         
         # Run the script
         echo ""
         echo "=== Executing Script ==="
-        echo "Command: $SCRIPT_PATH"
-        "$SCRIPT_PATH"
+        "$TEMP_SCRIPT"
+        
+        # Cleanup
+        rm -f "$TEMP_SCRIPT"
