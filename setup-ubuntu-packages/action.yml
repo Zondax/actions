@@ -76,6 +76,8 @@ runs:
         # Remove YAML list markers (-) and convert newlines to spaces
         export PACKAGES="$(echo "${PACKAGES}" | sed 's/^[[:space:]]*-[[:space:]]*//' | tr '\n' ' ')"
         export EXTRA_PACKAGES="$(echo "${EXTRA_PACKAGES}" | sed 's/^[[:space:]]*-[[:space:]]*//' | tr '\n' ' ')"
+        # Make script executable
+        chmod +x "${{ github.action_path }}/setup-ubuntu-packages.sh"
         # Run the script
         echo "Executing: ${{ github.action_path }}/setup-ubuntu-packages.sh"
         "${{ github.action_path }}/setup-ubuntu-packages.sh"
