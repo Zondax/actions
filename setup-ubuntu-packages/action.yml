@@ -94,7 +94,7 @@ runs:
         # Install packages if any specified
         if [ -n "$ALL_PACKAGES" ]; then
           echo "Installing packages: $ALL_PACKAGES"
-          $SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $ALL_PACKAGES
+          DEBIAN_FRONTEND=noninteractive $SUDO apt-get install -y --no-install-recommends $ALL_PACKAGES
         fi
         
         # Set outputs
