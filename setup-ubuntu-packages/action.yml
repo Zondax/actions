@@ -94,45 +94,36 @@ runs:
         echo "Packages: ${PACKAGES}"
         echo "Extra Packages: ${EXTRA_PACKAGES}"
         
-        # Auto-discover the script using find
         echo ""
         echo "=== Searching for setup-ubuntu-packages.sh ==="
         
-        # GitHub Actions limitation: subdirectory actions lose their structure
-        # We need to search in the parent directory when used as subdirectory action
-        SEARCH_PATHS=(
-          "${{ github.action_path }}"
-          "${{ github.action_path }}/.."
-          "${{ github.action_path }}/../.."
-        )
+        # Search for the script in the GitHub Actions checkout directory
+        echo "Searching in /home/runner/_work/_actions..."
+        SCRIPT_PATH=$(find /home/runner/_work/_actions -name "setup-ubuntu-packages.sh" -type f 2>/dev/null | head -1)
         
-        SCRIPT_PATH=""
-        for search_dir in "${SEARCH_PATHS[@]}"; do
-          echo "Searching in: $search_dir"
-          if [ -d "$search_dir" ]; then
-            found=$(find "$search_dir" -name "setup-ubuntu-packages.sh" -type f 2>/dev/null | head -1)
-            if [ -n "$found" ]; then
-              SCRIPT_PATH="$found"
-              break
-            fi
-          fi
-        done
-        
-        if [ -z "$SCRIPT_PATH" ]; then
+        if [ -n "$SCRIPT_PATH" ]; then
+          echo "Found script at: $SCRIPT_PATH"
+        else
+          echo "Script not found. Listing all files in actions directory for debugging:"
+          echo ""
+          echo "All .sh files:"
+          find /home/runner/_work/_actions -name "*.sh" -type f 2>/dev/null || echo "No .sh files found"
+          echo ""
+          echo "All .yml and .yaml files:"
+          find /home/runner/_work/_actions -name "*.yml" -o -name "*.yaml" -type f 2>/dev/null | head -20 || echo "No YAML files found"
+          echo ""
+          echo "Directory structure:"
+          find /home/runner/_work/_actions -type d 2>/dev/null | head -20 || echo "Cannot list directories"
+          echo ""
           echo "ERROR: Could not find setup-ubuntu-packages.sh"
           echo ""
-          echo "GitHub Action Path: ${{ github.action_path }}"
-          echo "This appears to be a subdirectory action issue."
+          echo "This is likely because GitHub Actions doesn't support the syntax: owner/repo/subdirectory@ref"
+          echo "The '/setup-ubuntu-packages' part is being ignored by GitHub."
           echo ""
-          echo "Debugging information:"
-          echo "1. Parent directory contents:"
-          ls -la "${{ github.action_path }}/.." 2>/dev/null || echo "Cannot list parent directory"
-          echo ""
-          echo "2. Repository root contents:"
-          ls -la "${{ github.action_path }}/../.." 2>/dev/null || echo "Cannot list repository root"
-          echo ""
-          echo "3. Find all .sh files from parent:"
-          find "${{ github.action_path }}/.." -name "*.sh" -type f 2>/dev/null || echo "No .sh files found"
+          echo "Solutions:"
+          echo "  1. Move each action to its own repository: zondax/setup-ubuntu-packages@v1"
+          echo "  2. Reference the action at the repository root with a dispatcher"
+          echo "  3. Use relative paths if in the same repository: ./setup-ubuntu-packages"
           exit 1
         fi
         
