@@ -97,6 +97,7 @@ runs:
         mise use --global yarn@${{ inputs.yarn_version }}
         mise use --global pnpm@${{ inputs.pnpm_version }}
         mise use --global bun@${{ inputs.bun_version }}
+        mise use --global npm:typescript@latest
         mise install
     
     - name: Verify package manager installation
@@ -117,44 +118,10 @@ runs:
             npm --version || { echo "Error: NPM not found in PATH"; exit 1; }
             ;;
         esac
-    
-    - name: Install TypeScript globally with npm
-      shell: bash
-      run: |
-        echo "Installing TypeScript globally with npm..."
-        # Disable mise auto-install/reshim to avoid conflicts
-        export MISE_AUTO_INSTALL=0
-        export MISE_EXPERIMENTAL=0
         
-        # Install TypeScript globally
-        npm install -g typescript || true
-        
-        # Manually ensure mise shims are updated
-        mise reshim || true
-        
-        # Add npm global bin to PATH for subsequent steps
-        NPM_GLOBAL_BIN="$(npm bin -g)"
-        echo "$NPM_GLOBAL_BIN" >> $GITHUB_PATH
-        
-        # Also add mise shims directory to PATH
-        MISE_SHIMS="$HOME/.local/share/mise/shims"
-        echo "$MISE_SHIMS" >> $GITHUB_PATH
-        
-        # Verify TypeScript is accessible (try multiple locations)
+        # Also verify TypeScript installation
         echo "Verifying TypeScript installation..."
-        if command -v tsc &> /dev/null; then
-          echo "Found tsc at: $(which tsc)"
-          tsc --version
-        elif [ -f "$NPM_GLOBAL_BIN/tsc" ]; then
-          echo "Found tsc at: $NPM_GLOBAL_BIN/tsc"
-          "$NPM_GLOBAL_BIN/tsc" --version
-        elif [ -f "$MISE_SHIMS/tsc" ]; then
-          echo "Found tsc at: $MISE_SHIMS/tsc"
-          "$MISE_SHIMS/tsc" --version
-        else
-          echo "Error: TypeScript not found in PATH"
-          exit 1
-        fi
+        tsc --version || { echo "Error: TypeScript not found in PATH"; exit 1; }
     
     - name: Install dependencies
       if: inputs.install_deps == 'true'
