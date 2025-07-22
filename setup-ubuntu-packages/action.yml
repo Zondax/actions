@@ -87,10 +87,13 @@ runs:
           echo "ca-certificates installed"
         fi
         
+        # Always include these essential packages
+        ESSENTIAL_PACKAGES="curl git jq unzip"
+        
         # Normalize package lists - remove YAML list markers and newlines
         PACKAGES="$(echo "${PACKAGES}" | sed 's/^[[:space:]]*-[[:space:]]*//' | tr '\n' ' ')"
         EXTRA_PACKAGES="$(echo "${EXTRA_PACKAGES}" | sed 's/^[[:space:]]*-[[:space:]]*//' | tr '\n' ' ')"
-        ALL_PACKAGES="$PACKAGES $EXTRA_PACKAGES"
+        ALL_PACKAGES="$ESSENTIAL_PACKAGES $PACKAGES $EXTRA_PACKAGES"
         ALL_PACKAGES=$(echo "$ALL_PACKAGES" | xargs) # Trim whitespace
         
         # Update apt cache if requested
