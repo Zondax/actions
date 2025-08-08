@@ -51,13 +51,7 @@ outputs:
 
 runs:
   using: "composite"
-  steps:
-    - name: Log JWT Information
-      if: inputs.log_jwt_info == 'true'
-      uses: github/actions-oidc-debugger@main
-      with:
-        audience: ${{ inputs.workload_identity_provider }}
-    
+  steps:    
     - name: Authenticate with Google Cloud (WIF only)
       if: inputs.project_id == '' && inputs.service_account == ''
       id: auth
