@@ -74,7 +74,10 @@ runs:
       if: inputs.patch_git_config == 'true'
       shell: bash
       run: |
-        if [[ "${{ inputs.use_sudo }}" == "true" ]]; then
+        # Skip sudo on Windows as it's not available
+        if [[ "${{ runner.os }}" == "Windows" ]]; then
+          git config --global --add safe.directory '*'
+        elif [[ "${{ inputs.use_sudo }}" == "true" ]]; then
           sudo git config --global --add safe.directory '*'
         else
           git config --global --add safe.directory '*'
