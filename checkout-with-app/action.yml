@@ -74,13 +74,40 @@ runs:
       if: inputs.patch_git_config == 'true'
       shell: bash
       run: |
+        # Function to safely run git config with retry logic
+        safe_git_config() {
+          local max_attempts=3
+          local attempt=1
+
+          # Clean up any stale lock files first (self-hosted runners)
+          if [[ -f "$HOME/.gitconfig.lock" ]]; then
+            echo "Removing stale git config lock file..."
+            rm -f "$HOME/.gitconfig.lock"
+          fi
+
+          while [ $attempt -le $max_attempts ]; do
+            if git config --global --add safe.directory '*' 2>/dev/null; then
+              echo "Successfully added safe directory to git config"
+              return 0
+            fi
+
+            echo "Attempt $attempt failed, cleaning lock file and retrying..."
+            rm -f "$HOME/.gitconfig.lock" 2>/dev/null || true
+            sleep $((attempt * 2))  # Exponential backoff: 2, 4, 6 seconds
+            attempt=$((attempt + 1))
+          done
+
+          echo "Failed to update git config after $max_attempts attempts"
+          return 1
+        }
+
         # Skip sudo on Windows as it's not available
         if [[ "${{ runner.os }}" == "Windows" ]]; then
           git config --global --add safe.directory '*'
         elif [[ "${{ inputs.use_sudo }}" == "true" ]]; then
           sudo git config --global --add safe.directory '*'
         else
-          git config --global --add safe.directory '*'
+          safe_git_config
         fi
     
     - name: Configure Git for private repos
