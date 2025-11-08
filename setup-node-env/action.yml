@@ -4,26 +4,10 @@ branding:
   icon: 'package'
   color: 'green'
 inputs:
-  node_version:
-    description: 'Node.js version to install'
-    required: false
-    default: '22'
   package_manager:
     description: 'Package manager to use (npm, yarn, pnpm, or bun)'
     required: false
     default: 'npm'
-  yarn_version:
-    description: 'Yarn version to install'
-    required: false
-    default: 'latest'
-  pnpm_version:
-    description: 'PNPM version to install'
-    required: false
-    default: 'latest'
-  bun_version:
-    description: 'Bun version to install'
-    required: false
-    default: 'latest'
   install_deps:
     description: 'Install dependencies after setup'
     required: false
@@ -60,14 +44,10 @@ runs:
   using: "composite"
   steps:
     - name: Install mise
-      uses: jdx/mise-action@v2
-    
-    - name: Setup Node.js with mise
-      shell: bash
-      run: |
-        mise use --global node@${{ inputs.node_version }}
-        mise install
-    
+      uses: jdx/mise-action@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        
     - name: Set package manager variables
       id: set-pm
       shell: bash
@@ -90,16 +70,7 @@ runs:
             echo "pm_run=npm run" >> $GITHUB_OUTPUT
             ;;
         esac
-    
-    - name: Install all package managers with mise
-      shell: bash
-      run: |
-        mise use --global yarn@${{ inputs.yarn_version }}
-        mise use --global pnpm@${{ inputs.pnpm_version }}
-        mise use --global bun@${{ inputs.bun_version }}
-        mise use --global npm:typescript@latest
-        mise install
-    
+        
     - name: Verify package manager installation
       shell: bash
       run: |

@@ -35,12 +35,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Create mise.toml for Node ${{ matrix.node_version }}
+        run: |
+          cat > mise.toml << EOF
+          [tools]
+          node = "${{ matrix.node_version }}"
+
+          # Install package managers based on what we need
+          yarn = "latest"
+          pnpm = "latest"
+          bun = "latest"
+          "npm:typescript" = "latest"
+          EOF
+
+          echo "Created mise.toml with Node ${{ matrix.node_version }}"
+          cat mise.toml
 
       - name: Setup Node.js ${{ matrix.node_version }} with ${{ matrix.package_manager }}
         id: setup-node
         uses: ./setup-node-env
         with:
-          node_version: ${{ matrix.node_version }}
           package_manager: ${{ matrix.package_manager }}
           cache_dependencies: true
           install_deps: false
