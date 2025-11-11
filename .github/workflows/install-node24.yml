@@ -38,20 +38,12 @@ jobs:
       - name: Create mise.toml for testing
         run: |
           cat > mise.toml <<EOF
-          [node]
-          version = "${{ matrix.node_version }}"
-
-          [npm]
-          version = "latest"
-
-          [yarn]
-          version = "latest"
-
-          [pnpm]
-          version = "latest"
-
-          [bun]
-          version = "latest"
+          [tools]
+          node = "${{ matrix.node_version }}"
+          npm = "latest"
+          yarn = "latest"
+          pnpm = "latest"
+          bun = "latest"
           EOF
           cat mise.toml
 

@@ -58,11 +58,9 @@ runs:
           echo "Please create a mise.toml file with your required tools"
           echo "Example:"
           echo ""
-          echo "[node]"
-          echo "version = \"22\""
-          echo ""
-          echo "[pnpm]"
-          echo "version = \"latest\""
+          echo "[tools]"
+          echo "node = \"22\""
+          echo "pnpm = \"latest\""
           exit 1
         fi
 
@@ -129,8 +127,9 @@ runs:
           echo ""
           echo "Tip: Add $PM to your mise.toml or .mise.toml file to install it automatically"
           echo "Example:"
-          echo "  [$PM]"
-          echo "  version = 'latest'"
+          echo ""
+          echo "[tools]"
+          echo "$PM = \"latest\""
           exit 1
         fi
 
