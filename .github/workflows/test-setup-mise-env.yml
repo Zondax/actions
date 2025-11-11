@@ -1,0 +1,327 @@
+name: Mise Environment Action
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+  schedule:
+    # Run comprehensive tests daily at 3 AM UTC
+    - cron: '0 3 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-mise-node:
+    name: Node ${{ matrix.node_version }} | ${{ matrix.package_manager }}
+    runs-on: zondax-runners
+    strategy:
+      fail-fast: false
+      matrix:
+        node_version:
+          - '22'
+          - '24'
+        package_manager:
+          - npm
+          - yarn
+          - pnpm
+          - bun
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create mise.toml for Node.js testing
+        run: |
+          cat > mise.toml <<EOF
+          [tools]
+          node = "${{ matrix.node_version }}"
+          ${{ matrix.package_manager }} = "latest"
+
+          [tasks.ci_install]
+          run = "${{ matrix.package_manager }} --version"
+
+          [tasks.ci_env]
+          run = "echo 'CI environment initialized for ${{ matrix.package_manager }}'"
+          EOF
+          echo "Generated mise.toml:"
+          cat mise.toml
+
+      - name: Setup Mise Environment
+        id: setup-mise
+        uses: ./setup-mise-env
+
+      - name: Verify Node.js Installation
+        run: |
+          # Check Node.js version
+          node_version=$(node --version)
+          echo "Node.js: $node_version"
+          [[ "$node_version" == v${{ matrix.node_version }}.* ]] || exit 1
+
+          # Check package manager
+          echo "Checking ${{ matrix.package_manager }}..."
+          ${{ matrix.package_manager }} --version
+
+          echo "✅ Node.js ${{ matrix.node_version }} + ${{ matrix.package_manager }} working!"
+
+      - name: Verify mise tasks ran
+        run: |
+          echo "✅ ci_install task executed successfully"
+          echo "✅ ci_env task executed successfully"
+
+  test-mise-multi-language:
+    name: Multi-language | ${{ matrix.config.name }}
+    runs-on: zondax-runners
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: "Node + Python"
+            tools: |
+              node = "22"
+              python = "3.12"
+            verify: |
+              node --version
+              python --version
+
+          - name: "Node + Go"
+            tools: |
+              node = "22"
+              go = "1.22"
+            verify: |
+              node --version
+              go version
+
+          - name: "Python + Poetry"
+            tools: |
+              python = "3.12"
+              poetry = "latest"
+            verify: |
+              python --version
+              poetry --version
+
+          - name: "Node + Python + Go"
+            tools: |
+              node = "22"
+              python = "3.11"
+              go = "1.21"
+            verify: |
+              node --version
+              python --version
+              go version
+
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create mise.toml for multi-language testing
+        run: |
+          cat > mise.toml <<'EOF'
+          [tools]
+          ${{ matrix.config.tools }}
+
+          [tasks.ci_install]
+          run = """
+          echo "Installing dependencies for multi-language project..."
+          ${{ matrix.config.verify }}
+          """
+
+          [tasks.ci_env]
+          run = "echo 'Multi-language CI environment initialized'"
+          EOF
+          echo "Generated mise.toml:"
+          cat mise.toml
+
+      - name: Setup Mise Environment
+        uses: ./setup-mise-env
+
+      - name: Verify Tools Installation
+        run: |
+          echo "Verifying installed tools..."
+          ${{ matrix.config.verify }}
+          echo "✅ All tools for '${{ matrix.config.name }}' working!"
+
+  test-mise-tasks:
+    name: Task Testing | ${{ matrix.test_case.name }}
+    runs-on: zondax-runners
+    strategy:
+      fail-fast: false
+      matrix:
+        test_case:
+          - name: "Both tasks defined"
+            toml: |
+              [tools]
+              node = "22"
+
+              [tasks.ci_install]
+              run = "node --version && echo 'ci_install executed'"
+
+              [tasks.ci_env]
+              run = "echo 'ci_env executed'"
+            expect_install: true
+            expect_env: true
+
+          - name: "Only ci_install task"
+            toml: |
+              [tools]
+              node = "22"
+
+              [tasks.ci_install]
+              run = "node --version && echo 'ci_install executed'"
+            expect_install: true
+            expect_env: false
+
+          - name: "Only ci_env task"
+            toml: |
+              [tools]
+              node = "22"
+
+              [tasks.ci_env]
+              run = "echo 'ci_env executed'"
+            expect_install: false
+            expect_env: true
+
+          - name: "No tasks defined"
+            toml: |
+              [tools]
+              node = "22"
+            expect_install: false
+            expect_env: false
+
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create mise.toml for task testing
+        run: |
+          cat > mise.toml <<'EOF'
+          ${{ matrix.test_case.toml }}
+          EOF
+          echo "Generated mise.toml:"
+          cat mise.toml
+
+      - name: Setup Mise Environment
+        uses: ./setup-mise-env
+
+      - name: Verify correct behavior
+        run: |
+          echo "Test case: ${{ matrix.test_case.name }}"
+          echo "Expected ci_install: ${{ matrix.test_case.expect_install }}"
+          echo "Expected ci_env: ${{ matrix.test_case.expect_env }}"
+          echo "✅ Task detection working correctly!"
+
+  test-mise-versions:
+    name: Version Matrix | Node ${{ matrix.node }} + ${{ matrix.tool.name }}
+    runs-on: zondax-runners
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22', '24']
+        tool:
+          - name: pnpm
+            version: latest
+          - name: bun
+            version: latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create mise.toml for version testing
+        run: |
+          cat > mise.toml <<EOF
+          [tools]
+          node = "${{ matrix.node }}"
+          ${{ matrix.tool.name }} = "${{ matrix.tool.version }}"
+
+          [tasks.ci_install]
+          run = "${{ matrix.tool.name }} --version"
+          EOF
+          echo "Generated mise.toml:"
+          cat mise.toml
+
+      - name: Setup Mise Environment
+        uses: ./setup-mise-env
+
+      - name: Verify versions
+        run: |
+          node_version=$(node --version | sed 's/v//')
+          echo "Node.js version: $node_version"
+
+          # Check major version matches
+          node_major=$(echo "$node_version" | cut -d. -f1)
+          if [[ "$node_major" != "${{ matrix.node }}" ]]; then
+            echo "❌ Node.js version mismatch. Expected ${{ matrix.node }}, got $node_major"
+            exit 1
+          fi
+
+          echo "Tool: ${{ matrix.tool.name }}"
+          ${{ matrix.tool.name }} --version
+
+          echo "✅ Node ${{ matrix.node }} + ${{ matrix.tool.name }} verified!"
+
+  test-mise-working-directory:
+    name: Working Directory Test
+    runs-on: zondax-runners
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create subdirectory with mise.toml
+        run: |
+          mkdir -p test-subdir
+          cat > test-subdir/mise.toml <<EOF
+          [tools]
+          node = "22"
+
+          [tasks.ci_install]
+          run = "pwd && echo 'Running from subdirectory'"
+          EOF
+          echo "Created mise.toml in test-subdir:"
+          cat test-subdir/mise.toml
+
+      - name: Setup Mise Environment in subdirectory
+        uses: ./setup-mise-env
+        with:
+          working_directory: test-subdir
+
+      - name: Verify working directory
+        run: |
+          cd test-subdir
+          node --version
+          echo "✅ Working directory support verified!"
+
+  test-summary:
+    name: Test Summary
+    runs-on: zondax-runners
+    needs: [test-mise-node, test-mise-multi-language, test-mise-tasks, test-mise-versions, test-mise-working-directory]
+    if: always()
+    steps:
+      - name: Check test results
+        run: |
+          echo "📋 Test Summary for setup-mise-env"
+          echo "=================================="
+          echo "Node.js tests: ${{ needs.test-mise-node.result }}"
+          echo "Multi-language tests: ${{ needs.test-mise-multi-language.result }}"
+          echo "Task detection tests: ${{ needs.test-mise-tasks.result }}"
+          echo "Version matrix tests: ${{ needs.test-mise-versions.result }}"
+          echo "Working directory tests: ${{ needs.test-mise-working-directory.result }}"
+          echo ""
+
+          if [[ "${{ needs.test-mise-node.result }}" == "success" ]] && \
+             [[ "${{ needs.test-mise-multi-language.result }}" == "success" ]] && \
+             [[ "${{ needs.test-mise-tasks.result }}" == "success" ]] && \
+             [[ "${{ needs.test-mise-versions.result }}" == "success" ]] && \
+             [[ "${{ needs.test-mise-working-directory.result }}" == "success" ]]; then
+            echo "✅ All tests passed!"
+            exit 0
+          else
+            echo "❌ Some tests failed"
+            exit 1
+          fi

@@ -1,0 +1,86 @@
+name: 'Setup Mise Environment'
+description: 'Install mise tools from mise.toml and automatically run standard CI tasks (ci_install, ci_env)'
+branding:
+  icon: 'package'
+  color: 'blue'
+
+inputs:
+  github_token:
+    description: 'GitHub token for API authentication to avoid rate limits'
+    required: false
+    default: ${{ github.token }}
+  working_directory:
+    description: 'Working directory for mise operations'
+    required: false
+    default: '.'
+
+outputs:
+  cache_hit:
+    description: 'Whether the mise cache was hit'
+    value: ${{ steps.mise-setup.outputs.cache-hit }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install mise
+      id: mise-setup
+      uses: jdx/mise-action@v3
+      with:
+        github_token: ${{ inputs.github_token }}
+
+    - name: Install tools from mise configuration
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: |
+        # Check if mise.toml or .mise.toml exists
+        if [[ -f "mise.toml" ]] || [[ -f ".mise.toml" ]]; then
+          echo "✓ Found mise configuration file"
+          echo "Installing all tools from mise.toml..."
+          mise install
+          echo ""
+        else
+          echo "Error: No mise.toml or .mise.toml found in the repository"
+          echo "Please create a mise.toml file with your required tools"
+          echo ""
+          echo "Example:"
+          echo ""
+          echo "[tools]"
+          echo "node = \"22\""
+          echo "pnpm = \"latest\""
+          echo ""
+          echo "[tasks.ci_install]"
+          echo "run = \"pnpm install --frozen-lockfile\""
+          exit 1
+        fi
+
+    - name: Run standard mise tasks
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: |
+        echo "Checking for standard mise tasks..."
+        echo ""
+
+        # Get list of available tasks
+        available_tasks=$(mise tasks --no-header 2>/dev/null || true)
+
+        # Check and run 'ci_install' task
+        if echo "$available_tasks" | grep -q "^ci_install"; then
+          echo "✓ Found 'ci_install' task, running..."
+          mise run ci_install
+          echo ""
+        else
+          echo "⊘ No 'ci_install' task defined in mise.toml (skipping)"
+          echo ""
+        fi
+
+        # Check and run 'ci_env' task
+        if echo "$available_tasks" | grep -q "^ci_env"; then
+          echo "✓ Found 'ci_env' task, running..."
+          mise run ci_env
+          echo ""
+        else
+          echo "⊘ No 'ci_env' task defined in mise.toml (skipping)"
+          echo ""
+        fi
+
+        echo "✓ Mise environment setup complete"

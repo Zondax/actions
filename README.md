@@ -90,6 +90,58 @@ Setup Node.js with package manager (npm, yarn, pnpm, or bun) and install depende
 - `pm_run`: Package manager run command (e.g., 'pnpm run')
 - `cache_hit`: Whether the cache was hit
 
+### setup-mise-env
+
+Install mise tools from mise.toml and automatically run standard CI tasks. A modern, flexible alternative to setup-node-env that works with any mise-supported tool (Node.js, Python, Go, Ruby, etc.).
+
+**Usage:**
+```yaml
+- uses: zondax/setup-mise-env@v1
+```
+
+**Project Configuration (mise.toml):**
+```toml
+[tools]
+node = "22"
+pnpm = "latest"
+
+[tasks.ci_install]
+description = "Install dependencies"
+run = "pnpm install --frozen-lockfile"
+
+[tasks.ci_env]
+description = "Initialize CI environment"
+run = "pnpm run setup:ci"
+```
+
+**Inputs:**
+- `github_token`: GitHub token for API authentication (default: automatic)
+- `working_directory`: Working directory for mise operations (default: .)
+
+**Outputs:**
+- `cache_hit`: Whether the mise cache was hit
+
+**Standard Tasks:**
+The action automatically detects and runs these tasks if defined in mise.toml:
+- `ci_install` - Install dependencies (e.g., npm/pnpm/bun install)
+- `ci_env` - Initialize CI environment (e.g., setup scripts)
+
+**Key Features:**
+- 🚀 Install ANY mise-supported tool (Node, Python, Go, Ruby, etc.)
+- 🔧 Define your CI logic in mise.toml, not in the action
+- 🎯 Convention over configuration - standard task names just work
+- 🌍 Language-agnostic - not limited to Node.js
+- ⚡ Automatic task detection - no inputs required
+
+**Comparison with setup-node-env:**
+| Feature | setup-node-env | setup-mise-env |
+|---------|---------------|----------------|
+| Tool installation | Node.js only | Any mise tool |
+| Package manager | Auto-detect + install | Defined in mise.toml |
+| Install logic | Built into action | Defined in mise.toml tasks |
+| Flexibility | Node.js workflows | Any language/tool |
+| Configuration | Action inputs | mise.toml (project-owned) |
+
 ### setup-ubuntu-packages
 
 Configure Ubuntu mirrors and install packages for faster, reliable CI builds.

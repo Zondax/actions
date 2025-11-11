@@ -1,0 +1,103 @@
+name: Test Mise Environment Action
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-mise-env:
+    name: ${{ matrix.test_case.name }}
+    runs-on: zondax-runners
+    strategy:
+      fail-fast: false
+      matrix:
+        test_case:
+          - name: "Node.js with pnpm"
+            tools: |
+              [tools]
+              node = "22"
+              pnpm = "latest"
+            tasks: |
+              [tasks.ci_install]
+              run = "pnpm --version && echo 'pnpm install would run here'"
+
+              [tasks.ci_env]
+              run = "echo 'Environment initialized for pnpm project'"
+
+          - name: "Node.js with bun"
+            tools: |
+              [tools]
+              node = "24"
+              bun = "latest"
+            tasks: |
+              [tasks.ci_install]
+              run = "bun --version && echo 'bun install would run here'"
+
+          - name: "Python project"
+            tools: |
+              [tools]
+              python = "3.12"
+              poetry = "latest"
+            tasks: |
+              [tasks.ci_install]
+              run = "python --version && poetry --version"
+
+              [tasks.ci_env]
+              run = "echo 'Python environment initialized'"
+
+          - name: "Multi-language project"
+            tools: |
+              [tools]
+              node = "22"
+              python = "3.11"
+              go = "1.22"
+            tasks: |
+              [tasks.ci_install]
+              run = """
+              node --version
+              python --version
+              go version
+              """
+
+          - name: "No tasks defined"
+            tools: |
+              [tools]
+              node = "22"
+            tasks: ""
+
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create test mise.toml
+        run: |
+          cat > mise.toml <<'EOF'
+          ${{ matrix.test_case.tools }}
+          ${{ matrix.test_case.tasks }}
+          EOF
+          echo "Generated mise.toml:"
+          cat mise.toml
+
+      - name: Setup Mise Environment
+        uses: ./setup-mise-env
+
+      - name: Verify tools installation
+        run: |
+          echo "Listing installed mise tools:"
+          mise list
+
+          echo ""
+          echo "Verifying mise environment:"
+          mise doctor || true
+
+      - name: Test summary
+        run: |
+          echo "✓ Test case '${{ matrix.test_case.name }}' completed successfully"
