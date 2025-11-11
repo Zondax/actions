@@ -35,12 +35,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Create mise.toml for testing
+        run: |
+          cat > mise.toml <<EOF
+          [node]
+          version = "${{ matrix.node_version }}"
+
+          [npm]
+          version = "latest"
+
+          [yarn]
+          version = "latest"
+
+          [pnpm]
+          version = "latest"
+
+          [bun]
+          version = "latest"
+          EOF
+          cat mise.toml
 
       - name: Setup Node.js ${{ matrix.node_version }} with ${{ matrix.package_manager }}
         id: setup-node
         uses: ./setup-node-env
         with:
-          node_version: ${{ matrix.node_version }}
           package_manager: ${{ matrix.package_manager }}
           cache_dependencies: true
           install_deps: false

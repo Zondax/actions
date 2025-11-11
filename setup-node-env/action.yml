@@ -1,29 +1,13 @@
 name: 'Setup Node.js Environment'
-description: 'Setup Node.js with mise and package manager (npm, yarn, pnpm, or bun) and install dependencies'
+description: 'Setup Node.js with mise and package manager (npm, yarn, pnpm, or bun) and install dependencies. Installs all tools defined in mise.toml or .mise.toml'
 branding:
   icon: 'package'
   color: 'green'
 inputs:
-  node_version:
-    description: 'Node.js version to install'
-    required: false
-    default: '22'
   package_manager:
-    description: 'Package manager to use (npm, yarn, pnpm, or bun)'
+    description: 'Package manager to use (npm, yarn, pnpm, or bun). Will auto-detect from lockfile if set to "auto"'
     required: false
-    default: 'npm'
-  yarn_version:
-    description: 'Yarn version to install'
-    required: false
-    default: 'latest'
-  pnpm_version:
-    description: 'PNPM version to install'
-    required: false
-    default: 'latest'
-  bun_version:
-    description: 'Bun version to install'
-    required: false
-    default: 'latest'
+    default: 'auto'
   install_deps:
     description: 'Install dependencies after setup'
     required: false
@@ -60,19 +44,57 @@ runs:
   using: "composite"
   steps:
     - name: Install mise
-      uses: jdx/mise-action@v2
-    
-    - name: Setup Node.js with mise
+      uses: jdx/mise-action@v3
+
+    - name: Install tools from mise configuration
       shell: bash
       run: |
-        mise use --global node@${{ inputs.node_version }}
-        mise install
-    
-    - name: Set package manager variables
+        # Check if mise.toml or .mise.toml exists
+        if [[ -f "mise.toml" ]] || [[ -f ".mise.toml" ]]; then
+          echo "Found mise configuration file, installing all tools..."
+          mise install
+        else
+          echo "Error: No mise.toml or .mise.toml found in the repository"
+          echo "Please create a mise.toml file with your required tools"
+          echo "Example:"
+          echo ""
+          echo "[node]"
+          echo "version = \"22\""
+          echo ""
+          echo "[pnpm]"
+          echo "version = \"latest\""
+          exit 1
+        fi
+
+    - name: Detect and set package manager
       id: set-pm
       shell: bash
+      working-directory: ${{ inputs.working_directory }}
       run: |
-        case "${{ inputs.package_manager }}" in
+        PM="${{ inputs.package_manager }}"
+
+        # Auto-detect package manager from lockfile if set to 'auto'
+        if [[ "$PM" == "auto" ]]; then
+          if [[ -f "bun.lockb" ]]; then
+            PM="bun"
+            echo "Detected bun from lockfile"
+          elif [[ -f "pnpm-lock.yaml" ]]; then
+            PM="pnpm"
+            echo "Detected pnpm from lockfile"
+          elif [[ -f "yarn.lock" ]]; then
+            PM="yarn"
+            echo "Detected yarn from lockfile"
+          elif [[ -f "package-lock.json" ]]; then
+            PM="npm"
+            echo "Detected npm from lockfile"
+          else
+            PM="npm"
+            echo "No lockfile found, defaulting to npm"
+          fi
+        fi
+
+        # Set output variables based on detected/specified package manager
+        case "$PM" in
           bun)
             echo "pm=bun" >> $GITHUB_OUTPUT
             echo "pm_run=bun run" >> $GITHUB_OUTPUT
@@ -90,38 +112,30 @@ runs:
             echo "pm_run=npm run" >> $GITHUB_OUTPUT
             ;;
         esac
-    
-    - name: Install all package managers with mise
-      shell: bash
-      run: |
-        mise use --global yarn@${{ inputs.yarn_version }}
-        mise use --global pnpm@${{ inputs.pnpm_version }}
-        mise use --global bun@${{ inputs.bun_version }}
-        mise use --global npm:typescript@latest
-        mise install
-    
+
+        echo "Using package manager: $PM"
+
     - name: Verify package manager installation
       shell: bash
       run: |
-        echo "Verifying ${{ inputs.package_manager }} installation..."
-        case "${{ inputs.package_manager }}" in
-          bun)
-            bun --version || { echo "Error: Bun not found in PATH"; exit 1; }
-            ;;
-          yarn)
-            yarn --version || { echo "Error: Yarn not found in PATH"; exit 1; }
-            ;;
-          pnpm)
-            pnpm --version || { echo "Error: PNPM not found in PATH"; exit 1; }
-            ;;
-          npm)
-            npm --version || { echo "Error: NPM not found in PATH"; exit 1; }
-            ;;
-        esac
-        
-        # Also verify TypeScript installation
-        echo "Verifying TypeScript installation..."
-        tsc --version || { echo "Error: TypeScript not found in PATH"; exit 1; }
+        PM="${{ steps.set-pm.outputs.pm }}"
+        echo "Verifying $PM installation..."
+
+        # Check if the package manager is available
+        if ! command -v "$PM" &> /dev/null; then
+          echo "Warning: $PM not found in PATH"
+          echo "Available tools from mise:"
+          mise list
+          echo ""
+          echo "Tip: Add $PM to your mise.toml or .mise.toml file to install it automatically"
+          echo "Example:"
+          echo "  [$PM]"
+          echo "  version = 'latest'"
+          exit 1
+        fi
+
+        $PM --version
+        echo "$PM is ready"
     
     - name: Install dependencies
       if: inputs.install_deps == 'true'
