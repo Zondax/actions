@@ -54,7 +54,7 @@ runs:
     - name: Generate GitHub App Token
       id: app-token
       if: inputs.github_app_auth != 'false'
-      uses: actions/create-github-app-token@v2
+      uses: actions/create-github-app-token@v3
       with:
         app-id: ${{ inputs.app_id }}
         private-key: ${{ inputs.app_pem }}
@@ -63,7 +63,7 @@ runs:
           ${{ inputs.github_app_repos }}
     
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         ref: ${{ inputs.ref }}
         fetch-depth: ${{ inputs.fetch_depth }}
