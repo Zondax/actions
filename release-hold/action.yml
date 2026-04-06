@@ -1,0 +1,182 @@
+name: 'Release Hold'
+description: 'Time-based safety gate — delays proceeding until artifacts or releases have aged enough for manual testing'
+branding:
+  icon: 'clock'
+  color: 'yellow'
+
+inputs:
+  hold_period:
+    description: 'Minimum age (in minutes) before proceeding. 0 = skip check (default).'
+    required: false
+    default: '0'
+  anchor:
+    description: 'Timestamp source to measure age against: release-asset, artifact, or run-start'
+    required: false
+    default: 'release-asset'
+  release_tag:
+    description: 'Release tag to check (for release-asset anchor). Auto-detected from github.ref when empty.'
+    required: false
+    default: ''
+  artifact_name:
+    description: 'Artifact name to check creation time (for artifact anchor)'
+    required: false
+    default: ''
+  run_id:
+    description: 'Workflow run ID (for artifact and run-start anchors)'
+    required: false
+    default: '${{ github.run_id }}'
+  repository:
+    description: 'Repository to query (owner/repo format)'
+    required: false
+    default: '${{ github.repository }}'
+
+outputs:
+  passed:
+    description: 'Whether the hold period is satisfied (true/false)'
+    value: ${{ steps.check.outputs.passed }}
+  age_minutes:
+    description: 'Age of the anchor timestamp in minutes'
+    value: ${{ steps.check.outputs.age_minutes }}
+  remaining_minutes:
+    description: 'Minutes remaining until hold period is met (0 if passed)'
+    value: ${{ steps.check.outputs.remaining_minutes }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Check release hold period
+      id: check
+      shell: bash
+      env:
+        HOLD_PERIOD: ${{ inputs.hold_period }}
+        ANCHOR: ${{ inputs.anchor }}
+        RELEASE_TAG: ${{ inputs.release_tag }}
+        ARTIFACT_NAME: ${{ inputs.artifact_name }}
+        RUN_ID: ${{ inputs.run_id }}
+        REPO: ${{ inputs.repository }}
+        GITHUB_REF_NAME: ${{ github.ref_name }}
+        GITHUB_REF_TYPE: ${{ github.ref_type }}
+      run: |
+        set -euo pipefail
+
+        # Skip if hold_period is 0
+        if [ "$HOLD_PERIOD" -eq 0 ] 2>/dev/null; then
+          echo "⏭️ Hold period is 0 — skipping check."
+          {
+            echo "passed=true"
+            echo "age_minutes=0"
+            echo "remaining_minutes=0"
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        # Resolve timestamp based on anchor strategy
+        TIMESTAMP=""
+
+        case "$ANCHOR" in
+          release-asset)
+            # Resolve release tag
+            TAG="$RELEASE_TAG"
+            if [ -z "$TAG" ]; then
+              if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+                TAG="$GITHUB_REF_NAME"
+              else
+                echo "❌ Error: release_tag is required when not running on a tag ref"
+                exit 1
+              fi
+            fi
+
+            echo "🔍 Checking latest asset on release '$TAG'..."
+            TIMESTAMP=$(gh release view "$TAG" --repo "$REPO" --json assets --jq '[.assets[].updatedAt] | sort | last')
+
+            if [ -z "$TIMESTAMP" ] || [ "$TIMESTAMP" = "null" ]; then
+              echo "⚠️ No assets found on release '$TAG'. Skipping hold check."
+              {
+                echo "passed=true"
+                echo "age_minutes=0"
+                echo "remaining_minutes=0"
+              } >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            echo "⏱️ Release '$TAG' latest asset uploaded at: $TIMESTAMP"
+            ;;
+
+          artifact)
+            if [ -z "$ARTIFACT_NAME" ]; then
+              echo "❌ Error: artifact_name is required for 'artifact' anchor"
+              exit 1
+            fi
+
+            echo "🔍 Checking artifact '$ARTIFACT_NAME' creation time..."
+            TIMESTAMP=$(gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts" --jq ".artifacts[] | select(.name==\"$ARTIFACT_NAME\") | .created_at")
+
+            if [ -z "$TIMESTAMP" ] || [ "$TIMESTAMP" = "null" ]; then
+              echo "⚠️ Could not find artifact '$ARTIFACT_NAME'. Skipping hold check."
+              {
+                echo "passed=true"
+                echo "age_minutes=0"
+                echo "remaining_minutes=0"
+              } >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            echo "⏱️ Artifact '$ARTIFACT_NAME' created at: $TIMESTAMP"
+            ;;
+
+          run-start)
+            echo "🔍 Checking workflow run start time..."
+            TIMESTAMP=$(gh run view "$RUN_ID" --repo "$REPO" --json createdAt --jq '.createdAt')
+
+            if [ -z "$TIMESTAMP" ] || [ "$TIMESTAMP" = "null" ]; then
+              echo "⚠️ Could not determine run start time. Skipping hold check."
+              {
+                echo "passed=true"
+                echo "age_minutes=0"
+                echo "remaining_minutes=0"
+              } >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            echo "⏱️ Workflow run started at: $TIMESTAMP"
+            ;;
+
+          *)
+            echo "❌ Error: unknown anchor '$ANCHOR'. Must be one of: release-asset, artifact, run-start"
+            exit 1
+            ;;
+        esac
+
+        # Calculate age
+        ANCHOR_EPOCH=$(date -d "$TIMESTAMP" +%s)
+        NOW_EPOCH=$(date +%s)
+        AGE_MINUTES=$(( (NOW_EPOCH - ANCHOR_EPOCH) / 60 ))
+
+        echo "⏱️ Age: ${AGE_MINUTES} minutes"
+        echo "⏱️ Required hold period: ${HOLD_PERIOD} minutes"
+
+        if [ "$AGE_MINUTES" -lt "$HOLD_PERIOD" ]; then
+          REMAINING=$(( HOLD_PERIOD - AGE_MINUTES ))
+          {
+            echo "passed=false"
+            echo "age_minutes=$AGE_MINUTES"
+            echo "remaining_minutes=$REMAINING"
+          } >> "$GITHUB_OUTPUT"
+
+          echo ""
+          echo "🛑 HOLD PERIOD NOT MET"
+          echo "   Age is ${AGE_MINUTES}m, but ${HOLD_PERIOD}m required."
+          echo "   Please wait ~${REMAINING} more minutes, then re-run this job."
+          echo ""
+          echo "   This is intentional — download the binaries, test them locally,"
+          echo "   and re-run when ready."
+          exit 1
+        fi
+
+        {
+          echo "passed=true"
+          echo "age_minutes=$AGE_MINUTES"
+          echo "remaining_minutes=0"
+        } >> "$GITHUB_OUTPUT"
+
+        echo "✅ Hold period satisfied (${AGE_MINUTES}m >= ${HOLD_PERIOD}m). Proceeding."
