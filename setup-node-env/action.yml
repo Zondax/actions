@@ -95,7 +95,13 @@ runs:
       shell: bash
       run: |
         mise use --global yarn@${{ inputs.yarn_version }}
-        mise use --global pnpm@${{ inputs.pnpm_version }}
+        # `pnpm` resolves through aqua:pnpm/pnpm by default, whose registry
+        # expects `pnpm-<os>-<arch>.tar.gz` while pnpm v10 ships raw binaries
+        # on Linux (`pnpm-linux-x64`, no extension). Using the github backend
+        # explicitly avoids that asset-name mismatch and works on every
+        # supported platform. Backward compatible: any value that was valid
+        # for `pnpm@<v>` is also valid for `github:pnpm/pnpm@<v>`.
+        mise use --global "github:pnpm/pnpm@${{ inputs.pnpm_version }}"
         mise use --global bun@${{ inputs.bun_version }}
         mise use --global npm:typescript@latest
         mise install
