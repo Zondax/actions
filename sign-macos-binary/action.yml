@@ -1,0 +1,69 @@
+name: 'Sign macOS Binary (rcodesign + notarize)'
+description: 'Codesign a bare Mach-O with rcodesign (reads .p12 directly; avoids the self-hosted LaunchDaemon Security.framework bug) and optionally notarize with xcrun notarytool.'
+inputs:
+  binary-path: {description: 'Mach-O to sign', required: true}
+  apple-certificate: {description: 'Base64 Developer ID .p12 (secrets.APPLE_CERTIFICATE)', required: true}
+  apple-certificate-password: {description: 'P12 password', required: true}
+  notarize: {description: 'Submit for notarization (true/false)', required: false, default: 'false'}
+  apple-api-issuer: {description: 'ASC issuer ID (required if notarize)', required: false, default: ''}
+  apple-api-key: {description: 'ASC key ID (required if notarize)', required: false, default: ''}
+  apple-api-key-private: {description: 'Base64 ASC .p8 (required if notarize)', required: false, default: ''}
+  rcodesign-version: {description: 'apple-codesign release', required: false, default: '0.27.0'}
+  rcodesign-sha256: {description: 'Expected sha256 of the rcodesign tarball (pin)', required: false, default: ''}
+outputs:
+  os-code-signature: {description: 'Compact JSON metadata', value: '${{ steps.sign.outputs.os-code-signature }}'}
+runs:
+  using: 'composite'
+  steps:
+    - name: Install rcodesign
+      shell: bash
+      env: {RVER: '${{ inputs.rcodesign-version }}', RSHA: '${{ inputs.rcodesign-sha256 }}'}
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/bin"
+        ARCH="$(uname -m)"; [ "$ARCH" = "arm64" ] && ARCH="aarch64"
+        ASSET="apple-codesign-${RVER}-${ARCH}-apple-darwin"
+        curl -fSL "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${RVER}/${ASSET}.tar.gz" -o "$RUNNER_TEMP/rc.tar.gz"
+        if [ -n "$RSHA" ]; then echo "${RSHA}  $RUNNER_TEMP/rc.tar.gz" | shasum -a 256 -c - || { echo "::error::rcodesign sha256 mismatch"; exit 1; }; else echo "::warning::rcodesign-sha256 not pinned"; fi
+        tar -xzf "$RUNNER_TEMP/rc.tar.gz" -C "$RUNNER_TEMP"
+        mv "$RUNNER_TEMP/${ASSET}/rcodesign" "$RUNNER_TEMP/bin/rcodesign"
+        chmod +x "$RUNNER_TEMP/bin/rcodesign"
+        echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+        "$RUNNER_TEMP/bin/rcodesign" --version
+    - name: Sign and optionally notarize
+      id: sign
+      shell: bash
+      env:
+        BINARY_PATH: '${{ inputs.binary-path }}'
+        APPLE_CERTIFICATE: '${{ inputs.apple-certificate }}'
+        APPLE_CERTIFICATE_PASSWORD: '${{ inputs.apple-certificate-password }}'
+        NOTARIZE: '${{ inputs.notarize }}'
+        APPLE_API_ISSUER: '${{ inputs.apple-api-issuer }}'
+        APPLE_API_KEY: '${{ inputs.apple-api-key }}'
+        APPLE_API_KEY_PRIVATE: '${{ inputs.apple-api-key-private }}'
+      run: |
+        set -euo pipefail   # no `set -x`: would echo decoded key material
+        P12="$RUNNER_TEMP/rcodesign-cert.p12"
+        ( umask 077; printf '%s' "$APPLE_CERTIFICATE" | base64 --decode -o "$P12" )
+        rcodesign sign --p12-file "$P12" --p12-password "$APPLE_CERTIFICATE_PASSWORD" --code-signature-flags runtime "$BINARY_PATH"
+        rm -f "$P12"
+        if [[ "$NOTARIZE" == "true" ]]; then
+          [ -n "$APPLE_API_ISSUER" ] && [ -n "$APPLE_API_KEY" ] && [ -n "$APPLE_API_KEY_PRIVATE" ] || { echo "::error::notarize=true but API creds missing"; exit 1; }
+          P8="$RUNNER_TEMP/AuthKey.p8"; ( umask 077; printf '%s' "$APPLE_API_KEY_PRIVATE" | base64 --decode > "$P8" ); chmod 600 "$P8"
+          ZIP="${BINARY_PATH}.zip"; zip -j "$ZIP" "$BINARY_PATH"
+          OUT=$(xcrun notarytool submit "$ZIP" --issuer "$APPLE_API_ISSUER" --key-id "$APPLE_API_KEY" --key "$P8" --output-format json --wait)
+          ID=$(echo "$OUT" | jq -r '.id'); ST=$(echo "$OUT" | jq -r '.status')
+          if [[ "$ST" != "Accepted" ]]; then echo "::error::notarization $ST"; echo "$OUT" | jq .; exit 1; fi
+          echo "os-code-signature=$(jq -cn --arg id "$ID" '{"type":"apple-notarized","submissionId":$id}')" >> "$GITHUB_OUTPUT"
+        else
+          echo 'os-code-signature={"type":"apple-codesigned"}' >> "$GITHUB_OUTPUT"
+        fi
+    - name: Shred secrets (persistent runner)
+      if: always()
+      shell: bash
+      env: {BINARY_PATH: '${{ inputs.binary-path }}'}
+      run: |
+        for f in "$RUNNER_TEMP/rcodesign-cert.p12" "$RUNNER_TEMP/AuthKey.p8"; do
+          [ -f "$f" ] && { rm -P "$f" 2>/dev/null || rm -f "$f"; }
+        done
+        rm -f "${BINARY_PATH}.zip" || true
