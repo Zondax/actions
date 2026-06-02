@@ -156,6 +156,142 @@ Authenticate with Google Cloud using Workload Identity Federation with optional 
 - `access_token`: Access token for authenticated requests
 - `project_id`: GCP Project ID
 
+## Code-signing actions
+
+Three composite actions that sign release artifacts using GCP Cloud KMS keys, one per OS. They pair with `gcp-wif-auth` (which gained two new inputs to support the Windows Authenticode path; see [gcp-wif-auth updates](#gcp-wif-auth-updates) below).
+
+### sign-linux-binary
+
+Produce an armored OpenPGP detached signature (`.asc`) for any file using `kunobi-pgp-kms` backed by a GCP KMS signing key.
+
+**Runner:** `ubuntu-*` (GitHub-hosted or self-hosted).
+
+**Usage:**
+```yaml
+- uses: zondax/sign-linux-binary@v1
+  with:
+    target-path: dist/myapp-linux-amd64.tar.gz
+    workload-identity-provider: ${{ vars.PGP_SIGN_WIF_PROVIDER }}
+    gcp-project-id: ${{ vars.PGP_SIGN_GCP_PROJECT_ID }}
+    kms-key: ${{ vars.PGP_SIGN_KMS_KEY_VERSION }}
+    cert-base64: ${{ secrets.PGP_CERT_BASE64 }}
+    signer-token: ${{ secrets.KUNOBI_SIGNER_TOKEN }}
+```
+
+**Inputs:**
+
+| Name | Required | Default | Description |
+|------|----------|---------|-------------|
+| `target-path` | yes | — | File to sign (e.g. a `.tar.gz` archive) |
+| `workload-identity-provider` | yes | — | WIF provider (`vars.PGP_SIGN_WIF_PROVIDER`) |
+| `gcp-project-id` | yes | — | GCP project (`vars.PGP_SIGN_GCP_PROJECT_ID`) |
+| `service-account` | no | `''` | SA to impersonate; empty = direct principal-set |
+| `signer-token` | yes | — | Token with read access on the private `kunobi-ninja/kunobi-pgp-kms` release |
+| `kms-key` | yes | — | KMS key version path (`vars.PGP_SIGN_KMS_KEY_VERSION`) |
+| `cert-base64` | yes | — | Base64-encoded OpenPGP public cert (`secrets.PGP_CERT_BASE64`) |
+| `signer-version` | no | `latest` | `kunobi-pgp-kms` tag to install |
+
+**Outputs:**
+- `signature-path`: path to the generated `.asc` file
+- `cert-fingerprint`: OpenPGP V4 key fingerprint
+
+**Runner prerequisites:** `gpg2` (pre-installed on ubuntu runners); `mise` is bootstrapped automatically if absent.
+
+---
+
+### sign-windows-binary
+
+Authenticode-sign a Windows PE binary (`.exe`) using [jsign](https://ebourg.github.io/jsign/) against a GCP Cloud KMS key. Runs on a **native Windows runner** (e.g. `kunobi-windows`). The caller must obtain a GCP access token first via `gcp-wif-auth` with `token_format: access_token`.
+
+**Runner:** native Windows (`kunobi-windows` self-hosted runner or `windows-*`).
+
+**Usage:**
+```yaml
+- uses: zondax/gcp-wif-auth@v1
+  id: auth
+  with:
+    workload_identity_provider: ${{ vars.CODESIGN_WIF_PROVIDER }}
+    token_format: access_token
+    create_credentials_file: 'false'
+
+- uses: zondax/sign-windows-binary@v1
+  with:
+    binary-path: dist/myapp.exe
+    gcp-access-token: ${{ steps.auth.outputs.access_token }}
+    kms-keyring: ${{ vars.CODESIGN_KMS_KEYRING }}
+    kms-key-alias: ${{ vars.CODESIGN_KMS_KEY_ALIAS }}
+    cert-chain: ${{ secrets.CODESIGN_CERT_CHAIN }}
+```
+
+**Inputs:**
+
+| Name | Required | Default | Description |
+|------|----------|---------|-------------|
+| `binary-path` | yes | — | Path to the `.exe` to sign |
+| `gcp-access-token` | yes | — | GCP access token (from `gcp-wif-auth` `access_token` output) |
+| `kms-keyring` | yes | — | KMS keyring (`vars.CODESIGN_KMS_KEYRING`) |
+| `kms-key-alias` | yes | — | KMS key alias (`vars.CODESIGN_KMS_KEY_ALIAS`) |
+| `cert-chain` | yes | — | PKCS7 EV cert chain PEM (`secrets.CODESIGN_CERT_CHAIN`) |
+| `jsign-version` | no | `7.4` | jsign version to download |
+| `jsign-sha256` | no | `''` | Expected SHA-256 of the jsign jar (pin; empty disables check — not recommended) |
+| `tsa-url` | no | `http://ts.ssl.com` | RFC3161 timestamp authority URL |
+
+**Outputs:**
+- `os-code-signature`: compact JSON metadata (`{"type":"authenticode","signer":"..."}`)
+
+**Runner prerequisites:** a **JRE on PATH** is required for jsign. `curl`, `sha256sum`, `openssl`, `sed`, and `grep` are provided by Git for Windows. **`jq` is NOT required** — the action builds its JSON output without it.
+
+---
+
+### sign-macos-binary
+
+Codesign a bare Mach-O binary with [`rcodesign`](https://gregoryszorc.com/docs/apple-codesign/) (reads the `.p12` directly, avoiding the `Security.framework` bug on persistent self-hosted runners) and optionally submit for notarization via `xcrun notarytool`.
+
+**Runner:** self-hosted macOS ARM64 (e.g. an Apple Silicon self-hosted runner).
+
+**Usage:**
+```yaml
+- uses: zondax/sign-macos-binary@v1
+  with:
+    binary-path: dist/myapp-darwin-arm64
+    apple-certificate: ${{ secrets.APPLE_CERTIFICATE }}
+    apple-certificate-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+    notarize: 'true'
+    apple-api-issuer: ${{ secrets.APPLE_API_ISSUER }}
+    apple-api-key: ${{ secrets.APPLE_API_KEY }}
+    apple-api-key-private: ${{ secrets.APPLE_API_KEY_PRIVATE }}
+```
+
+**Inputs:**
+
+| Name | Required | Default | Description |
+|------|----------|---------|-------------|
+| `binary-path` | yes | — | Mach-O file to sign |
+| `apple-certificate` | yes | — | Base64-encoded Developer ID `.p12` (`secrets.APPLE_CERTIFICATE`) |
+| `apple-certificate-password` | yes | — | P12 password |
+| `notarize` | no | `false` | Submit for notarization after signing (`true`/`false`) |
+| `apple-api-issuer` | no | `''` | ASC issuer ID (required when `notarize: 'true'`) |
+| `apple-api-key` | no | `''` | ASC key ID (required when `notarize: 'true'`) |
+| `apple-api-key-private` | no | `''` | Base64-encoded ASC `.p8` private key (required when `notarize: 'true'`) |
+| `rcodesign-version` | no | `0.27.0` | `apple-codesign` release tag |
+| `rcodesign-sha256` | no | `''` | Expected SHA-256 of the rcodesign tarball (pin; empty disables check — not recommended) |
+
+**Outputs:**
+- `os-code-signature`: compact JSON metadata (`{"type":"apple-codesigned"}` or `{"type":"apple-notarized","submissionId":"..."}`)
+
+**Runner prerequisites:** `xcrun` (Xcode Command Line Tools), `zip`, and `jq` must be available. `rcodesign` is downloaded automatically by the action.
+
+---
+
+### gcp-wif-auth updates
+
+`gcp-wif-auth` gained two new inputs to support token-only flows (used by the Windows Authenticode path):
+
+| New input | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `token_format` | no | `''` | Token format to request from `google-github-actions/auth` (`''`, `access_token`, or `id_token`). Set to `access_token` to populate the `access_token` output — required by `sign-windows-binary`. |
+| `create_credentials_file` | no | `'true'` | Whether auth writes an ADC credentials file. Pass `'false'` for token-only flows (e.g. Windows Authenticode) where no ADC file is needed. |
+
 ## 🏗️ Architecture & Features
 
 ### Production-Ready Features
