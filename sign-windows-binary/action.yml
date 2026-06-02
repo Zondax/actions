@@ -1,0 +1,54 @@
+name: 'Sign Windows Binary (Authenticode via GCP KMS)'
+description: 'Authenticode-sign a PE binary with jsign + a GCP Cloud KMS key, on a native Windows runner. Caller provides a GCP access token from gcp-wif-auth (token_format: access_token).'
+inputs:
+  binary-path: {description: 'Path to the .exe', required: true}
+  gcp-access-token: {description: 'GCP access token (gcp-wif-auth output)', required: true}
+  kms-keyring: {description: 'KMS keyring (vars.CODESIGN_KMS_KEYRING)', required: true}
+  kms-key-alias: {description: 'KMS key alias (vars.CODESIGN_KMS_KEY_ALIAS)', required: true}
+  cert-chain: {description: 'PKCS7 EV cert chain PEM (secrets.CODESIGN_CERT_CHAIN)', required: true}
+  jsign-version: {description: 'jsign version', required: false, default: '7.4'}
+  jsign-sha256: {description: 'Expected sha256 of the jsign jar (pin). Empty disables the check (NOT recommended).', required: false, default: ''}
+  tsa-url: {description: 'RFC3161 TSA URL', required: false, default: 'http://ts.ssl.com'}
+outputs:
+  os-code-signature: {description: 'Compact JSON metadata', value: '${{ steps.sign.outputs.os-code-signature }}'}
+runs:
+  using: 'composite'
+  steps:
+    - name: Sign (Authenticode)
+      id: sign
+      shell: bash
+      env:
+        BINARY_PATH: ${{ inputs.binary-path }}
+        GCP_ACCESS_TOKEN: ${{ inputs.gcp-access-token }}
+        KMS_KEYRING: ${{ inputs.kms-keyring }}
+        KMS_KEY_ALIAS: ${{ inputs.kms-key-alias }}
+        CERT_CHAIN: ${{ inputs.cert-chain }}
+        JSIGN_VERSION: ${{ inputs.jsign-version }}
+        JSIGN_SHA256: ${{ inputs.jsign-sha256 }}
+        TSA_URL: ${{ inputs.tsa-url }}
+      run: |
+        set -euo pipefail   # never `set -x`: would echo the token
+        command -v java >/dev/null || { echo "::error::JRE not found on PATH (kunobi-windows must provision Java)"; exit 1; }
+        JAR="$RUNNER_TEMP/jsign.jar"; CHAIN="$RUNNER_TEMP/codesign-chain.p7b"
+        curl -fSL "https://github.com/ebourg/jsign/releases/download/${JSIGN_VERSION}/jsign-${JSIGN_VERSION}.jar" -o "$JAR"
+        if [ -n "$JSIGN_SHA256" ]; then
+          echo "${JSIGN_SHA256}  $JAR" | sha256sum -c - || { echo "::error::jsign sha256 mismatch"; exit 1; }
+        else
+          echo "::warning::jsign-sha256 not pinned"
+        fi
+        printf '%s\n' "$CERT_CHAIN" > "$CHAIN"
+        java -jar "$JAR" \
+          --storetype GOOGLECLOUD \
+          --storepass "$GCP_ACCESS_TOKEN" \
+          --keystore "$KMS_KEYRING" \
+          --alias "$KMS_KEY_ALIAS" \
+          --certfile "$CHAIN" \
+          --tsaurl "$TSA_URL" --tsmode RFC3161 \
+          "$BINARY_PATH"
+        SIGNER=$(openssl pkcs7 -in "$CHAIN" -print_certs -noout 2>/dev/null | grep 'subject=' | head -1 | sed 's/.*O = //; s/,.*//' || echo "Zondax AG")
+        SIGNER_ESC="${SIGNER//\"/\\\"}"
+        echo "os-code-signature={\"type\":\"authenticode\",\"signer\":\"${SIGNER_ESC}\"}" >> "$GITHUB_OUTPUT"
+    - name: Cleanup
+      if: always()
+      shell: bash
+      run: rm -f "$RUNNER_TEMP/jsign.jar" "$RUNNER_TEMP/codesign-chain.p7b"
