@@ -1,5 +1,5 @@
 name: 'Sign Windows Binary (Authenticode via GCP KMS)'
-description: 'Authenticode-sign a PE binary with jsign + a GCP Cloud KMS key, on a native Windows runner. Caller provides a GCP access token from gcp-wif-auth (token_format: access_token).'
+description: 'Authenticode-sign a PE binary (x64 or arm64) with jsign + a GCP Cloud KMS key. Runs on the Linux runner where Windows targets are cross-built (cargo-xwin); installs a JRE if missing. Caller provides a GCP access token from gcp-wif-auth (token_format: access_token).'
 inputs:
   binary-path: {description: 'Path to the .exe', required: true}
   gcp-access-token: {description: 'GCP access token (gcp-wif-auth output)', required: true}
@@ -28,7 +28,11 @@ runs:
         TSA_URL: ${{ inputs.tsa-url }}
       run: |
         set -euo pipefail   # never `set -x`: would echo the token
-        command -v java >/dev/null || { echo "::error::JRE not found on PATH (kunobi-windows must provision Java)"; exit 1; }
+        # Windows targets cross-build on the Linux runner (cargo-xwin), so jsign
+        # runs here. Install a headless JRE if the runner image doesn't ship one.
+        if ! command -v java >/dev/null; then
+          apt-get update && apt-get install -y --no-install-recommends default-jre-headless && rm -rf /var/lib/apt/lists/*
+        fi
         JAR="$RUNNER_TEMP/jsign.jar"; CHAIN="$RUNNER_TEMP/codesign-chain.p7b"
         curl -fSL "https://github.com/ebourg/jsign/releases/download/${JSIGN_VERSION}/jsign-${JSIGN_VERSION}.jar" -o "$JAR"
         if [ -n "$JSIGN_SHA256" ]; then

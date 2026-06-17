@@ -1,13 +1,21 @@
-name: 'Sign macOS Binary (rcodesign + notarize)'
-description: 'Codesign a bare Mach-O with rcodesign (reads .p12 directly; avoids the self-hosted LaunchDaemon Security.framework bug) and optionally notarize with xcrun notarytool.'
+name: 'Sign macOS Binary (rcodesign + notarize, GCP-sourced creds)'
+description: >
+  Codesign a bare Mach-O with rcodesign and optionally notarize. Apple
+  credentials (Developer ID .p12 + password, and the notary .p8 / issuer /
+  key-id) are fetched KEYLESS from GCP Secret Manager via Workload Identity
+  Federation — no Apple GitHub secrets. rcodesign reads the .p12 directly,
+  avoiding the self-hosted-runner keychain bug.
 inputs:
-  binary-path: {description: 'Mach-O to sign', required: true}
-  apple-certificate: {description: 'Base64 Developer ID .p12 (secrets.APPLE_CERTIFICATE)', required: true}
-  apple-certificate-password: {description: 'P12 password', required: true}
-  notarize: {description: 'Submit for notarization (true/false)', required: false, default: 'false'}
-  apple-api-issuer: {description: 'ASC issuer ID (required if notarize)', required: false, default: ''}
-  apple-api-key: {description: 'ASC key ID (required if notarize)', required: false, default: ''}
-  apple-api-key-private: {description: 'Base64 ASC .p8 (required if notarize)', required: false, default: ''}
+  binary-path: {description: 'Path to the Mach-O binary to sign', required: true}
+  workload-identity-provider: {description: 'Full WIF provider resource (vars.CODESIGN_WIF_PROVIDER)', required: true}
+  gcp-project: {description: 'GCP project holding the Apple secrets (vars.CODESIGN_GCP_PROJECT; e.g. zondax-code-signing)', required: true}
+  service-account: {description: 'SA to impersonate (vars.CODESIGN_SERVICE_ACCOUNT, e.g. codesign@…). Empty = direct principal-set WIF.', required: false, default: ''}
+  notarize: {description: 'Submit for Apple notarization (true/false)', required: false, default: 'false'}
+  certificate-secret: {description: 'Secret Manager id: base64 Developer ID .p12', required: false, default: 'apple-certificate-p12'}
+  certificate-password-secret: {description: 'Secret Manager id: .p12 password', required: false, default: 'apple-certificate-password'}
+  notary-key-secret: {description: 'Secret Manager id: base64 App Store Connect .p8 (notarize only)', required: false, default: 'apple-asc-api-key-p8'}
+  api-issuer-secret: {description: 'Secret Manager id: App Store Connect issuer id (notarize only)', required: false, default: 'apple-asc-api-issuer'}
+  api-key-id-secret: {description: 'Secret Manager id: App Store Connect key id (notarize only)', required: false, default: 'apple-asc-api-key-id'}
   rcodesign-version: {description: 'apple-codesign release', required: false, default: '0.27.0'}
   rcodesign-sha256: {description: 'Expected sha256 of the rcodesign tarball (pin)', required: false, default: ''}
 outputs:
@@ -30,26 +38,53 @@ runs:
         chmod +x "$RUNNER_TEMP/bin/rcodesign"
         echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
         "$RUNNER_TEMP/bin/rcodesign" --version
+
+    - name: Authenticate to GCP (Secret Manager, ADC)
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ inputs.workload-identity-provider }}
+        project_id: ${{ inputs.gcp-project }}
+        service_account: ${{ inputs.service-account }}
+        create_credentials_file: true
+
+    - name: Fetch Apple certificate (Secret Manager)
+      id: cert
+      uses: google-github-actions/get-secretmanager-secrets@v2
+      with:
+        secrets: |-
+          p12:${{ inputs.gcp-project }}/${{ inputs.certificate-secret }}
+          p12pw:${{ inputs.gcp-project }}/${{ inputs.certificate-password-secret }}
+
+    - name: Fetch notarization secrets (Secret Manager)
+      id: notary
+      if: inputs.notarize == 'true'
+      uses: google-github-actions/get-secretmanager-secrets@v2
+      with:
+        secrets: |-
+          p8:${{ inputs.gcp-project }}/${{ inputs.notary-key-secret }}
+          issuer:${{ inputs.gcp-project }}/${{ inputs.api-issuer-secret }}
+          keyid:${{ inputs.gcp-project }}/${{ inputs.api-key-id-secret }}
+
     - name: Sign and optionally notarize
       id: sign
       shell: bash
       env:
-        BINARY_PATH: '${{ inputs.binary-path }}'
-        APPLE_CERTIFICATE: '${{ inputs.apple-certificate }}'
-        APPLE_CERTIFICATE_PASSWORD: '${{ inputs.apple-certificate-password }}'
-        NOTARIZE: '${{ inputs.notarize }}'
-        APPLE_API_ISSUER: '${{ inputs.apple-api-issuer }}'
-        APPLE_API_KEY: '${{ inputs.apple-api-key }}'
-        APPLE_API_KEY_PRIVATE: '${{ inputs.apple-api-key-private }}'
+        BINARY_PATH: ${{ inputs.binary-path }}
+        NOTARIZE: ${{ inputs.notarize }}
+        P12_B64: ${{ steps.cert.outputs.p12 }}
+        P12_PASSWORD: ${{ steps.cert.outputs.p12pw }}
+        P8_B64: ${{ steps.notary.outputs.p8 }}
+        APPLE_API_ISSUER: ${{ steps.notary.outputs.issuer }}
+        APPLE_API_KEY: ${{ steps.notary.outputs.keyid }}
       run: |
         set -euo pipefail   # no `set -x`: would echo decoded key material
         P12="$RUNNER_TEMP/rcodesign-cert.p12"
-        ( umask 077; printf '%s' "$APPLE_CERTIFICATE" | base64 --decode -o "$P12" )
-        rcodesign sign --p12-file "$P12" --p12-password "$APPLE_CERTIFICATE_PASSWORD" --code-signature-flags runtime "$BINARY_PATH"
+        ( umask 077; printf '%s' "$P12_B64" | base64 --decode > "$P12" )
+        rcodesign sign --p12-file "$P12" --p12-password "$P12_PASSWORD" --code-signature-flags runtime "$BINARY_PATH"
         rm -f "$P12"
         if [[ "$NOTARIZE" == "true" ]]; then
-          [ -n "$APPLE_API_ISSUER" ] && [ -n "$APPLE_API_KEY" ] && [ -n "$APPLE_API_KEY_PRIVATE" ] || { echo "::error::notarize=true but API creds missing"; exit 1; }
-          P8="$RUNNER_TEMP/AuthKey.p8"; ( umask 077; printf '%s' "$APPLE_API_KEY_PRIVATE" | base64 --decode > "$P8" ); chmod 600 "$P8"
+          [ -n "$P8_B64" ] && [ -n "$APPLE_API_ISSUER" ] && [ -n "$APPLE_API_KEY" ] || { echo "::error::notarize=true but notary secrets missing"; exit 1; }
+          P8="$RUNNER_TEMP/AuthKey.p8"; ( umask 077; printf '%s' "$P8_B64" | base64 --decode > "$P8" ); chmod 600 "$P8"
           ZIP="${BINARY_PATH}.zip"; zip -j "$ZIP" "$BINARY_PATH"
           OUT=$(xcrun notarytool submit "$ZIP" --issuer "$APPLE_API_ISSUER" --key-id "$APPLE_API_KEY" --key "$P8" --output-format json --wait)
           ID=$(echo "$OUT" | jq -r '.id'); ST=$(echo "$OUT" | jq -r '.status')
@@ -58,6 +93,7 @@ runs:
         else
           echo 'os-code-signature={"type":"apple-codesigned"}' >> "$GITHUB_OUTPUT"
         fi
+
     - name: Shred secrets (persistent runner)
       if: always()
       shell: bash

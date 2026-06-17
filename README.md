@@ -201,9 +201,9 @@ Produce an armored OpenPGP detached signature (`.asc`) for any file using `kunob
 
 ### sign-windows-binary
 
-Authenticode-sign a Windows PE binary (`.exe`) using [jsign](https://ebourg.github.io/jsign/) against a GCP Cloud KMS key. Runs on a **native Windows runner** (e.g. `kunobi-windows`). The caller must obtain a GCP access token first via `gcp-wif-auth` with `token_format: access_token`.
+Authenticode-sign a Windows PE binary (`.exe`, x64 or arm64) using [jsign](https://ebourg.github.io/jsign/) against a GCP Cloud KMS key. Runs on the **Linux runner** where Windows targets are cross-built (cargo-xwin) — jsign is cross-platform and signs the PE regardless of where it was produced. The caller must obtain a GCP access token first via `gcp-wif-auth` with `token_format: access_token`.
 
-**Runner:** native Windows (`kunobi-windows` self-hosted runner or `windows-*`).
+**Runner:** Linux (same runner that cross-builds the `-pc-windows-msvc` target).
 
 **Usage:**
 ```yaml
@@ -239,13 +239,13 @@ Authenticode-sign a Windows PE binary (`.exe`) using [jsign](https://ebourg.gith
 **Outputs:**
 - `os-code-signature`: compact JSON metadata (`{"type":"authenticode","signer":"..."}`)
 
-**Runner prerequisites:** a **JRE on PATH** is required for jsign. `curl`, `sha256sum`, `openssl`, `sed`, and `grep` are provided by Git for Windows. **`jq` is NOT required** — the action builds its JSON output without it.
+**Runner prerequisites:** runs on the Linux cross-build runner; a headless JRE is **installed via `apt-get` if missing** (no manual provisioning). **`jq` is NOT required** — the action builds its JSON output without it.
 
 ---
 
 ### sign-macos-binary
 
-Codesign a bare Mach-O binary with [`rcodesign`](https://gregoryszorc.com/docs/apple-codesign/) (reads the `.p12` directly, avoiding the `Security.framework` bug on persistent self-hosted runners) and optionally submit for notarization via `xcrun notarytool`.
+Codesign a bare Mach-O binary with [`rcodesign`](https://gregoryszorc.com/docs/apple-codesign/) (reads the `.p12` directly, avoiding the `Security.framework` bug on persistent self-hosted runners) and optionally submit for notarization via `xcrun notarytool`. The Apple credentials are **fetched keyless from GCP Secret Manager via Workload Identity Federation** — there are **no Apple GitHub secrets**. The action authenticates with the same `CODESIGN_*` identity used for Windows.
 
 **Runner:** self-hosted macOS ARM64 (e.g. an Apple Silicon self-hosted runner).
 
@@ -254,12 +254,10 @@ Codesign a bare Mach-O binary with [`rcodesign`](https://gregoryszorc.com/docs/a
 - uses: zondax/sign-macos-binary@v1
   with:
     binary-path: dist/myapp-darwin-arm64
-    apple-certificate: ${{ secrets.APPLE_CERTIFICATE }}
-    apple-certificate-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+    workload-identity-provider: ${{ vars.CODESIGN_WIF_PROVIDER }}
+    gcp-project: ${{ vars.CODESIGN_GCP_PROJECT }}     # e.g. zondax-code-signing
+    service-account: ${{ vars.CODESIGN_SERVICE_ACCOUNT }}  # codesign@…; empty = direct WIF
     notarize: 'true'
-    apple-api-issuer: ${{ secrets.APPLE_API_ISSUER }}
-    apple-api-key: ${{ secrets.APPLE_API_KEY }}
-    apple-api-key-private: ${{ secrets.APPLE_API_KEY_PRIVATE }}
 ```
 
 **Inputs:**
@@ -267,19 +265,22 @@ Codesign a bare Mach-O binary with [`rcodesign`](https://gregoryszorc.com/docs/a
 | Name | Required | Default | Description |
 |------|----------|---------|-------------|
 | `binary-path` | yes | — | Mach-O file to sign |
-| `apple-certificate` | yes | — | Base64-encoded Developer ID `.p12` (`secrets.APPLE_CERTIFICATE`) |
-| `apple-certificate-password` | yes | — | P12 password |
+| `workload-identity-provider` | yes | — | WIF provider (`vars.CODESIGN_WIF_PROVIDER`) |
+| `gcp-project` | yes | — | GCP project holding the Apple secrets (`vars.CODESIGN_GCP_PROJECT`) |
+| `service-account` | no | `''` | SA to impersonate (`vars.CODESIGN_SERVICE_ACCOUNT`); empty = direct principal-set WIF |
 | `notarize` | no | `false` | Submit for notarization after signing (`true`/`false`) |
-| `apple-api-issuer` | no | `''` | ASC issuer ID (required when `notarize: 'true'`) |
-| `apple-api-key` | no | `''` | ASC key ID (required when `notarize: 'true'`) |
-| `apple-api-key-private` | no | `''` | Base64-encoded ASC `.p8` private key (required when `notarize: 'true'`) |
+| `certificate-secret` | no | `apple-certificate-p12` | Secret Manager id: base64 Developer ID `.p12` |
+| `certificate-password-secret` | no | `apple-certificate-password` | Secret Manager id: `.p12` password |
+| `notary-key-secret` | no | `apple-asc-api-key-p8` | Secret Manager id: base64 ASC `.p8` (notarize only) |
+| `api-issuer-secret` | no | `apple-asc-api-issuer` | Secret Manager id: ASC issuer id (notarize only) |
+| `api-key-id-secret` | no | `apple-asc-api-key-id` | Secret Manager id: ASC key id (notarize only) |
 | `rcodesign-version` | no | `0.27.0` | `apple-codesign` release tag |
 | `rcodesign-sha256` | no | `''` | Expected SHA-256 of the rcodesign tarball (pin; empty disables check — not recommended) |
 
 **Outputs:**
 - `os-code-signature`: compact JSON metadata (`{"type":"apple-codesigned"}` or `{"type":"apple-notarized","submissionId":"..."}`)
 
-**Runner prerequisites:** `xcrun` (Xcode Command Line Tools), `zip`, and `jq` must be available. `rcodesign` is downloaded automatically by the action.
+**Runner prerequisites:** `xcrun` (Xcode Command Line Tools), `zip`, and `jq` must be available. `rcodesign` is downloaded automatically. The runner needs OIDC (`id-token: write`) so the action can fetch the Apple creds from Secret Manager; no `gcloud` install is needed (the fetch uses `google-github-actions/get-secretmanager-secrets`).
 
 ---
 
