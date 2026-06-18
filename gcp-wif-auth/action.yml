@@ -37,6 +37,14 @@ inputs:
     description: 'Export credentials to environment'
     required: false
     default: 'true'
+  token_format:
+    description: 'Token format to request from google-github-actions/auth (empty | access_token | id_token). Required to populate the access_token output.'
+    required: false
+    default: ''
+  create_credentials_file:
+    description: "Whether auth writes an ADC credentials file (true/false). Composite-action inputs are strings — pass quoted 'false' for token-only flows."
+    required: false
+    default: 'true'
 
 outputs:
   credentials_path:
@@ -58,7 +66,9 @@ runs:
       uses: google-github-actions/auth@v2
       with:
         workload_identity_provider: ${{ inputs.workload_identity_provider }}
-    
+        token_format: ${{ inputs.token_format }}
+        create_credentials_file: ${{ inputs.create_credentials_file }}
+
     - name: Authenticate with Google Cloud (WIF + project)
       if: inputs.project_id != '' && inputs.service_account == ''
       id: auth-project
@@ -66,7 +76,9 @@ runs:
       with:
         workload_identity_provider: ${{ inputs.workload_identity_provider }}
         project_id: ${{ inputs.project_id }}
-    
+        token_format: ${{ inputs.token_format }}
+        create_credentials_file: ${{ inputs.create_credentials_file }}
+
     - name: Authenticate with Google Cloud (WIF + service account)
       if: inputs.project_id == '' && inputs.service_account != ''
       id: auth-sa
@@ -74,7 +86,9 @@ runs:
       with:
         workload_identity_provider: ${{ inputs.workload_identity_provider }}
         service_account: ${{ inputs.service_account }}
-    
+        token_format: ${{ inputs.token_format }}
+        create_credentials_file: ${{ inputs.create_credentials_file }}
+
     - name: Authenticate with Google Cloud (WIF + both)
       if: inputs.project_id != '' && inputs.service_account != ''
       id: auth-both
@@ -83,7 +97,9 @@ runs:
         workload_identity_provider: ${{ inputs.workload_identity_provider }}
         project_id: ${{ inputs.project_id }}
         service_account: ${{ inputs.service_account }}
-    
+        token_format: ${{ inputs.token_format }}
+        create_credentials_file: ${{ inputs.create_credentials_file }}
+
     - name: Set up Google Cloud SDK
       if: inputs.setup_gcloud == 'true'
       uses: google-github-actions/setup-gcloud@v2
