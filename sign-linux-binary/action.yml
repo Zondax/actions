@@ -44,7 +44,14 @@ runs:
         CERT_PATH="$RUNNER_TEMP/signer.pub.asc"
         printf '%s' "$CERT_B64" | base64 -d > "$CERT_PATH"
         grep -q 'BEGIN PGP PUBLIC KEY BLOCK' "$CERT_PATH" || { echo "::error::invalid PGP cert"; exit 1; }
-        FPR=$(gpg2 --with-colons --show-keys "$CERT_PATH" | awk -F: '/^fpr/{print $10; exit}')
+        # GnuPG 2.x is `gpg` on modern Debian/Ubuntu (no `gpg2` alias). Fall back to
+        # gpg2 if that's what exists; install gnupg if neither is present.
+        GPG="$(command -v gpg || command -v gpg2 || true)"
+        if [ -z "$GPG" ]; then
+          apt-get update && apt-get install -y --no-install-recommends gnupg && rm -rf /var/lib/apt/lists/*
+          GPG="$(command -v gpg)"
+        fi
+        FPR=$("$GPG" --with-colons --show-keys "$CERT_PATH" | awk -F: '/^fpr/{print $10; exit}')
         [ -z "$FPR" ] && { echo "::error::Could not extract fingerprint from $CERT_PATH"; exit 1; }
         echo "fingerprint: $FPR"
         echo "path=$CERT_PATH" >> "$GITHUB_OUTPUT"; echo "fingerprint=$FPR" >> "$GITHUB_OUTPUT"
