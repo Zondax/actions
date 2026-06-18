@@ -48,7 +48,9 @@ runs:
         # gpg2 if that's what exists; install gnupg if neither is present.
         GPG="$(command -v gpg || command -v gpg2 || true)"
         if [ -z "$GPG" ]; then
-          apt-get update && apt-get install -y --no-install-recommends gnupg && rm -rf /var/lib/apt/lists/*
+          # Hosted runners ship gpg; this fallback only fires elsewhere. apt needs
+          # root and the action runs unprivileged, so go through passwordless sudo.
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends gnupg && sudo rm -rf /var/lib/apt/lists/*
           GPG="$(command -v gpg)"
         fi
         FPR=$("$GPG" --with-colons --show-keys "$CERT_PATH" | awk -F: '/^fpr/{print $10; exit}')

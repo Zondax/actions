@@ -14,6 +14,15 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    - name: Set up JRE for jsign
+      # Windows targets cross-build on the Linux runner (cargo-xwin), so jsign
+      # runs here and needs a JRE. apt-get is unusable (the action runs
+      # unprivileged; only passwordless sudo works on hosted runners), so use
+      # setup-java — it's cached on the runner image and needs no root.
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '21'
     - name: Sign (Authenticode)
       id: sign
       shell: bash
@@ -28,11 +37,7 @@ runs:
         TSA_URL: ${{ inputs.tsa-url }}
       run: |
         set -euo pipefail   # never `set -x`: would echo the token
-        # Windows targets cross-build on the Linux runner (cargo-xwin), so jsign
-        # runs here. Install a headless JRE if the runner image doesn't ship one.
-        if ! command -v java >/dev/null; then
-          apt-get update && apt-get install -y --no-install-recommends default-jre-headless && rm -rf /var/lib/apt/lists/*
-        fi
+        # JRE is provided by the setup-java step above.
         JAR="$RUNNER_TEMP/jsign.jar"; CHAIN="$RUNNER_TEMP/codesign-chain.p7b"
         curl -fSL "https://github.com/ebourg/jsign/releases/download/${JSIGN_VERSION}/jsign-${JSIGN_VERSION}.jar" -o "$JAR"
         if [ -n "$JSIGN_SHA256" ]; then
