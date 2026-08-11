@@ -1,0 +1,442 @@
+name: "React Doctor"
+description: "CLI-owned React Doctor scan with configurable gate, pinned package version, sticky PR summary, and commit status"
+branding:
+  icon: "activity"
+  color: "purple"
+
+inputs:
+  directory:
+    description: "Project directory to scan"
+    required: false
+    default: "."
+  project:
+    description: 'Workspace project(s) to scan (comma-separated). Empty = CLI default / --yes all projects.'
+    required: false
+    default: ""
+  scope:
+    description: "Scan scope: full | files | changed | lines. On pull_request defaults to changed when empty; otherwise full."
+    required: false
+    default: ""
+  base:
+    description: "Git ref/SHA for files/changed/lines scope. Empty auto-uses pull_request.base.sha on PRs."
+    required: false
+    default: ""
+  blocking:
+    description: "Severity that fails the CLI gate: none (advisory) | error | warning. Fully configurable per caller."
+    required: false
+    default: "none"
+  fail_on:
+    description: "When to fail the workflow step: pr (only pull_request events) | always | never. CLI still uses `blocking`."
+    required: false
+    default: "pr"
+  version:
+    description: "react-doctor version for mise npm: backend (e.g. 0.9.11). Prefer a pin over latest."
+    required: false
+    default: "0.9.11"
+  node_version:
+    description: "Node.js version installed via mise"
+    required: false
+    default: "24"
+  telemetry:
+    description: "Allow score API / crash reporting (false passes --no-telemetry; score may be empty)"
+    required: false
+    default: "true"
+  dead_code:
+    description: "Run dead-code analysis (true|false)"
+    required: false
+    default: "true"
+  supply_chain:
+    description: "Run supply-chain analysis (true|false)"
+    required: false
+    default: "true"
+  lint:
+    description: "Run lint analysis (true|false). Empty = CLI default."
+    required: false
+    default: ""
+  max_duration:
+    description: "Optional scan time budget in seconds (empty = unlimited)"
+    required: false
+    default: ""
+  comment:
+    description: "Create/update a sticky PR summary comment"
+    required: false
+    default: "true"
+  commit_status:
+    description: "Publish a commit status (requires statuses: write)"
+    required: false
+    default: "true"
+  github_token:
+    description: "Token for PR comments and commit status"
+    required: false
+    default: ${{ github.token }}
+  working_directory:
+    description: "Working directory for git/base resolution (usually repo root)"
+    required: false
+    default: "."
+  extra_args:
+    description: "Extra CLI args (space-separated; advanced escape hatch)"
+    required: false
+    default: ""
+
+outputs:
+  score:
+    description: "Health score (0-100), empty when unavailable"
+    value: ${{ steps.parse.outputs.score }}
+  total-issues:
+    description: "Total diagnostic count in the report"
+    value: ${{ steps.parse.outputs.total-issues }}
+  error-count:
+    description: "Error diagnostic count"
+    value: ${{ steps.parse.outputs.error-count }}
+  warning-count:
+    description: "Warning diagnostic count"
+    value: ${{ steps.parse.outputs.warning-count }}
+  affected-files:
+    description: "Number of files with diagnostics"
+    value: ${{ steps.parse.outputs.affected-files }}
+  ok:
+    description: "Whether the scan produced a successful report (true|false)"
+    value: ${{ steps.parse.outputs.ok }}
+  version:
+    description: "react-doctor version reported in the JSON"
+    value: ${{ steps.parse.outputs.version }}
+  mode:
+    description: "Scan mode from the report (full/changed/…)"
+    value: ${{ steps.parse.outputs.mode }}
+  report-file:
+    description: "Path to the JSON report"
+    value: ${{ steps.scan.outputs.report-file }}
+  exit-code:
+    description: "CLI exit code"
+    value: ${{ steps.scan.outputs.exit-code }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup mise
+      uses: ./setup-mise
+      with:
+        github_token: ${{ inputs.github_token }}
+
+    - name: Install Node + react-doctor via mise
+      id: install
+      shell: bash
+      env:
+        NODE_VERSION: ${{ inputs.node_version }}
+        PACKAGE_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+
+        # Normalize version → mise npm: package spec.
+        # Accept "0.9.11", "react-doctor@0.9.11", or "npm:react-doctor@0.9.11".
+        RAW="${PACKAGE_VERSION}"
+        case "$RAW" in
+          npm:*)
+            MISE_SPEC="$RAW"
+            ;;
+          react-doctor@*)
+            MISE_SPEC="npm:${RAW}"
+            ;;
+          *)
+            MISE_SPEC="npm:react-doctor@${RAW}"
+            ;;
+        esac
+
+        echo "Installing node@${NODE_VERSION} and ${MISE_SPEC} with mise"
+        mise use --global "node@${NODE_VERSION}"
+        mise use --global "$MISE_SPEC"
+        mise install
+        mise reshim
+
+        node --version
+
+        if command -v react-doctor >/dev/null 2>&1; then
+          RD_BIN="$(command -v react-doctor)"
+        else
+          WRAPPER="${RUNNER_TEMP}/zondax-react-doctor-bin"
+          printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'set -euo pipefail' \
+            "exec mise exec ${MISE_SPEC} -- react-doctor \"\$@\"" \
+            > "$WRAPPER"
+          chmod +x "$WRAPPER"
+          RD_BIN="$WRAPPER"
+        fi
+        "$RD_BIN" --version
+
+        echo "bin=$RD_BIN" >> "$GITHUB_OUTPUT"
+        echo "spec=$MISE_SPEC" >> "$GITHUB_OUTPUT"
+        echo "Installed: $MISE_SPEC → $RD_BIN"
+
+    - name: Resolve scan parameters
+      id: resolve
+      shell: bash
+      env:
+        INPUT_SCOPE: ${{ inputs.scope }}
+        INPUT_BASE: ${{ inputs.base }}
+        INPUT_BLOCKING: ${{ inputs.blocking }}
+        EVENT_NAME: ${{ github.event_name }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        WORKDIR: ${{ inputs.working_directory }}
+      run: |
+        set -euo pipefail
+
+        SCOPE="$(printf '%s' "$INPUT_SCOPE" | tr '[:upper:]' '[:lower:]' | xargs)"
+        if [[ -z "$SCOPE" ]]; then
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            SCOPE="changed"
+          else
+            SCOPE="full"
+          fi
+        fi
+        case "$SCOPE" in
+          full|files|changed|lines) ;;
+          *)
+            echo "::error::Invalid scope '$SCOPE' (expected full|files|changed|lines)"
+            exit 1
+            ;;
+        esac
+
+        BLOCKING="$(printf '%s' "$INPUT_BLOCKING" | tr '[:upper:]' '[:lower:]' | xargs)"
+        case "$BLOCKING" in
+          none|error|warning) ;;
+          *)
+            echo "::error::Invalid blocking '$BLOCKING' (expected none|error|warning)"
+            exit 1
+            ;;
+        esac
+
+        BASE="$INPUT_BASE"
+        if [[ -z "$BASE" && "$EVENT_NAME" == "pull_request" && -n "${PR_BASE_SHA:-}" ]]; then
+          BASE="$PR_BASE_SHA"
+        fi
+
+        # Best-effort ensure base is reachable for changed/files/lines
+        if [[ "$SCOPE" != "full" && -n "$BASE" ]]; then
+          if git -C "$WORKDIR" rev-parse --git-dir >/dev/null 2>&1; then
+            if ! git -C "$WORKDIR" cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+              git -C "$WORKDIR" fetch --no-tags --depth=1 origin "$BASE" 2>/dev/null || true
+            fi
+            if ! git -C "$WORKDIR" cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+              echo "::warning::Base commit '$BASE' is not reachable. Prefer fetch-depth: 0 on actions/checkout. Scan may degrade."
+            fi
+          fi
+        fi
+
+        {
+          echo "scope=$SCOPE"
+          echo "blocking=$BLOCKING"
+          echo "base=$BASE"
+        } >> "$GITHUB_OUTPUT"
+
+        echo "Resolved scope=$SCOPE blocking=$BLOCKING base=${BASE:-<none>}"
+
+    - name: Run react-doctor
+      id: scan
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      env:
+        NO_COLOR: "1"
+        RD_BIN: ${{ steps.install.outputs.bin }}
+        INPUT_DIRECTORY: ${{ inputs.directory }}
+        INPUT_PROJECT: ${{ inputs.project }}
+        SCOPE: ${{ steps.resolve.outputs.scope }}
+        BASE: ${{ steps.resolve.outputs.base }}
+        BLOCKING: ${{ steps.resolve.outputs.blocking }}
+        TELEMETRY: ${{ inputs.telemetry }}
+        DEAD_CODE: ${{ inputs.dead_code }}
+        SUPPLY_CHAIN: ${{ inputs.supply_chain }}
+        LINT: ${{ inputs.lint }}
+        MAX_DURATION: ${{ inputs.max_duration }}
+        EXTRA_ARGS: ${{ inputs.extra_args }}
+      run: |
+        set -uo pipefail
+
+        REPORT_FILE="${RUNNER_TEMP}/zondax-react-doctor-report-${GITHUB_RUN_ID:-$$}.json"
+        echo "report-file=$REPORT_FILE" >> "$GITHUB_OUTPUT"
+
+        ARGS=("$INPUT_DIRECTORY" --yes --json --json-compact --json-out "$REPORT_FILE" --blocking "$BLOCKING" --scope "$SCOPE")
+
+        if [[ -n "$INPUT_PROJECT" ]]; then
+          ARGS+=(--project "$INPUT_PROJECT")
+        fi
+        if [[ "$SCOPE" != "full" && -n "$BASE" ]]; then
+          ARGS+=(--base "$BASE")
+        fi
+        if [[ "$TELEMETRY" != "true" ]]; then
+          ARGS+=(--no-telemetry)
+        fi
+        if [[ "$DEAD_CODE" != "true" ]]; then
+          ARGS+=(--no-dead-code)
+        fi
+        if [[ "$SUPPLY_CHAIN" != "true" ]]; then
+          ARGS+=(--no-supply-chain)
+        fi
+        if [[ "$LINT" == "true" ]]; then
+          ARGS+=(--lint)
+        elif [[ "$LINT" == "false" ]]; then
+          ARGS+=(--no-lint)
+        fi
+        if [[ -n "$MAX_DURATION" ]]; then
+          ARGS+=(--max-duration "$MAX_DURATION")
+        fi
+        if [[ -n "$EXTRA_ARGS" ]]; then
+          # shellcheck disable=SC2206
+          EXTRA=($EXTRA_ARGS)
+          ARGS+=("${EXTRA[@]}")
+        fi
+
+        echo "Running: react-doctor ${ARGS[*]}"
+        set +e
+        "$RD_BIN" "${ARGS[@]}"
+        EXIT_CODE=$?
+        set -e
+
+        if [[ ! -s "$REPORT_FILE" ]]; then
+          echo "::warning::No JSON report written; synthesizing failure report"
+          printf '%s\n' "{\"ok\":false,\"diagnostics\":[],\"summary\":{\"errorCount\":0,\"warningCount\":0,\"affectedFileCount\":0,\"totalDiagnosticCount\":0,\"score\":null},\"error\":{\"message\":\"react-doctor exited ${EXIT_CODE} without a JSON report\"}}" > "$REPORT_FILE"
+          if [[ "$EXIT_CODE" -eq 0 ]]; then
+            EXIT_CODE=1
+          fi
+        fi
+
+        echo "exit-code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+        echo "CLI exit code: $EXIT_CODE"
+
+    - name: Parse report and write summary
+      id: parse
+      if: always() && steps.scan.outcome != 'skipped'
+      shell: bash
+      env:
+        REACT_DOCTOR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: |
+        set -euo pipefail
+        SUMMARY_FILE="${RUNNER_TEMP}/zondax-react-doctor-summary.md"
+        node "${{ github.action_path }}/scripts/parse-report.mjs" \
+          "${{ steps.scan.outputs.report-file }}" \
+          "$SUMMARY_FILE"
+
+        if [[ -n "${GITHUB_STEP_SUMMARY:-}" && -f "$SUMMARY_FILE" ]]; then
+          cat "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    - name: Sticky PR comment
+      if: ${{ always() && github.event_name == 'pull_request' && inputs.comment == 'true' && steps.parse.outcome == 'success' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        SUMMARY_FILE: ${{ steps.parse.outputs.summary-file }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        if [[ ! -f "$SUMMARY_FILE" ]]; then
+          echo "No summary file; skipping comment"
+          exit 0
+        fi
+        BODY="$(cat "$SUMMARY_FILE")"
+        if [[ -z "${BODY// }" ]]; then
+          exit 0
+        fi
+
+        # Upsert comment marked with our summary marker
+        MARKER='<!-- react-doctor:summary -->'
+        EXISTING_ID="$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
+          --jq ".[] | select(.body | startswith(\"$MARKER\")) | .id" | head -n1 || true)"
+
+        # gh api --input for body
+        TMP_BODY="${RUNNER_TEMP}/zondax-react-doctor-comment-body.json"
+        jq -n --arg body "$BODY" '{body:$body}' > "$TMP_BODY"
+
+        if [[ -n "$EXISTING_ID" ]]; then
+          gh api --method PATCH "repos/${REPO}/issues/comments/${EXISTING_ID}" --input "$TMP_BODY" >/dev/null
+          echo "Updated sticky comment $EXISTING_ID"
+        else
+          gh api --method POST "repos/${REPO}/issues/${PR_NUMBER}/comments" --input "$TMP_BODY" >/dev/null
+          echo "Created sticky comment"
+        fi
+
+    - name: Publish commit status
+      if: ${{ always() && inputs.commit_status == 'true' && steps.parse.outcome == 'success' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        REPO: ${{ github.repository }}
+        SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        SCORE: ${{ steps.parse.outputs.score }}
+        ERROR_COUNT: ${{ steps.parse.outputs.error-count }}
+        WARNING_COUNT: ${{ steps.parse.outputs.warning-count }}
+        EXIT_CODE: ${{ steps.scan.outputs.exit-code }}
+        EVENT_NAME: ${{ github.event_name }}
+        FAIL_ON: ${{ inputs.fail_on }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        set -euo pipefail
+        if [[ -z "${SHA:-}" ]]; then
+          exit 0
+        fi
+
+        ERRORS="${ERROR_COUNT:-0}"
+        WARNINGS="${WARNING_COUNT:-0}"
+        if [[ -n "${SCORE:-}" ]]; then
+          DESC="Score: ${SCORE}/100 · ${ERRORS} error(s) · ${WARNINGS} warning(s)"
+        else
+          DESC="${ERRORS} error(s) · ${WARNINGS} warning(s)"
+        fi
+        DESC="${DESC:0:140}"
+
+        # Mirror workflow fail policy in the status state
+        STATE="success"
+        FAIL_ON_NORM="$(printf '%s' "$FAIL_ON" | tr '[:upper:]' '[:lower:]')"
+        SHOULD_GATE=false
+        case "$FAIL_ON_NORM" in
+          always) SHOULD_GATE=true ;;
+          pr) [[ "$EVENT_NAME" == "pull_request" ]] && SHOULD_GATE=true || true ;;
+          never) SHOULD_GATE=false ;;
+        esac
+        if [[ "$SHOULD_GATE" == "true" && "${EXIT_CODE:-1}" != "0" ]]; then
+          STATE="failure"
+        fi
+
+        # Best-effort: missing statuses:write should not fail the job
+        if ! gh api --method POST "repos/${REPO}/statuses/${SHA}" \
+          -f state="$STATE" \
+          -f context="React Doctor" \
+          -f description="$DESC" \
+          -f target_url="$RUN_URL" >/dev/null 2>&1; then
+          echo "::warning::Could not publish commit status (need statuses: write)."
+        else
+          echo "Published commit status: $STATE — $DESC"
+        fi
+
+    - name: Enforce gate
+      if: always() && steps.scan.outcome != 'skipped'
+      shell: bash
+      env:
+        EXIT_CODE: ${{ steps.scan.outputs.exit-code }}
+        FAIL_ON: ${{ inputs.fail_on }}
+        EVENT_NAME: ${{ github.event_name }}
+        BLOCKING: ${{ steps.resolve.outputs.blocking }}
+      run: |
+        set -euo pipefail
+        FAIL_ON_NORM="$(printf '%s' "$FAIL_ON" | tr '[:upper:]' '[:lower:]' | xargs)"
+        case "$FAIL_ON_NORM" in
+          never)
+            echo "fail_on=never — not failing the workflow (CLI exit was ${EXIT_CODE:-?}, blocking=${BLOCKING})"
+            exit 0
+            ;;
+          always)
+            exit "${EXIT_CODE:-1}"
+            ;;
+          pr)
+            if [[ "$EVENT_NAME" != "pull_request" ]]; then
+              echo "fail_on=pr and event is $EVENT_NAME — not failing (CLI exit ${EXIT_CODE:-?})"
+              exit 0
+            fi
+            exit "${EXIT_CODE:-1}"
+            ;;
+          *)
+            echo "::error::Invalid fail_on '$FAIL_ON' (expected pr|always|never)"
+            exit 1
+            ;;
+        esac
