@@ -6,6 +6,8 @@ Reusable **composite** GitHub Actions for Zondax / Kunobi CI. Prefer these over 
 
 **Repository:** [github.com/Zondax/actions](https://github.com/Zondax/actions)
 
+**Upgrading consumers?** See **[MIGRATION.md](./MIGRATION.md)** for the post-#23–#28 train (setup-mise, setup-node-env, WIF, sign-*, react-doctor).
+
 ## Conventions
 
 | Topic | Rule |
