@@ -1,38 +1,191 @@
 name: 'Sign macOS Binary (rcodesign + notarize, GCP-sourced creds)'
 description: >
   Codesign a bare Mach-O with rcodesign and optionally notarize. Apple
-  credentials (Developer ID .p12 + password, and the notary .p8 / issuer /
-  key-id) are fetched KEYLESS from GCP Secret Manager via Workload Identity
-  Federation — no Apple GitHub secrets. rcodesign reads the .p12 directly,
-  avoiding the self-hosted-runner keychain bug.
+  credentials are fetched keyless from GCP Secret Manager via Workload Identity
+  Federation through zondax/actions/gcp-wif-auth.
+
 inputs:
-  binary-path: {description: 'Path to the Mach-O binary to sign', required: true}
-  workload-identity-provider: {description: 'Full WIF provider resource (vars.CODESIGN_WIF_PROVIDER)', required: true}
-  gcp-project: {description: 'GCP project holding the Apple secrets (vars.CODESIGN_GCP_PROJECT; e.g. zondax-code-signing)', required: true}
-  service-account: {description: 'SA to impersonate (vars.CODESIGN_SERVICE_ACCOUNT, e.g. codesign@…). Empty = direct principal-set WIF.', required: false, default: ''}
-  notarize: {description: 'Submit for Apple notarization (true/false)', required: false, default: 'false'}
-  certificate-secret: {description: 'Secret Manager id: base64 Developer ID .p12', required: false, default: 'apple-certificate-p12'}
-  certificate-password-secret: {description: 'Secret Manager id: .p12 password', required: false, default: 'apple-certificate-password'}
-  notary-key-secret: {description: 'Secret Manager id: base64 App Store Connect .p8 (notarize only)', required: false, default: 'apple-asc-api-key-p8'}
-  api-issuer-secret: {description: 'Secret Manager id: App Store Connect issuer id (notarize only)', required: false, default: 'apple-asc-api-issuer'}
-  api-key-id-secret: {description: 'Secret Manager id: App Store Connect key id (notarize only)', required: false, default: 'apple-asc-api-key-id'}
-  rcodesign-version: {description: 'apple-codesign release', required: false, default: '0.27.0'}
-  rcodesign-sha256: {description: 'Expected sha256 of the rcodesign tarball (pin)', required: false, default: ''}
+  binary_path:
+    description: 'Path to the Mach-O binary. Alias: binary-path'
+    required: false
+    default: ''
+  binary-path:
+    description: 'Deprecated alias for binary_path'
+    required: false
+    default: ''
+  workload_identity_provider:
+    description: 'WIF provider. Alias: workload-identity-provider'
+    required: false
+    default: ''
+  workload-identity-provider:
+    description: 'Deprecated alias for workload_identity_provider'
+    required: false
+    default: ''
+  gcp_project:
+    description: 'GCP project holding Apple secrets. Alias: gcp-project'
+    required: false
+    default: ''
+  gcp-project:
+    description: 'Deprecated alias for gcp_project'
+    required: false
+    default: ''
+  service_account:
+    description: 'SA to impersonate; empty = direct principal-set. Alias: service-account'
+    required: false
+    default: ''
+  service-account:
+    description: 'Deprecated alias for service_account'
+    required: false
+    default: ''
+  notarize:
+    description: 'Submit for Apple notarization (true/false)'
+    required: false
+    default: 'false'
+  certificate_secret:
+    description: 'Secret Manager id: base64 Developer ID .p12. Alias: certificate-secret'
+    required: false
+    default: 'apple-certificate-p12'
+  certificate-secret:
+    description: 'Deprecated alias for certificate_secret'
+    required: false
+    default: ''
+  certificate_password_secret:
+    description: 'Secret Manager id: .p12 password. Alias: certificate-password-secret'
+    required: false
+    default: 'apple-certificate-password'
+  certificate-password-secret:
+    description: 'Deprecated alias for certificate_password_secret'
+    required: false
+    default: ''
+  notary_key_secret:
+    description: 'Secret Manager id: base64 ASC .p8. Alias: notary-key-secret'
+    required: false
+    default: 'apple-asc-api-key-p8'
+  notary-key-secret:
+    description: 'Deprecated alias for notary_key_secret'
+    required: false
+    default: ''
+  api_issuer_secret:
+    description: 'Secret Manager id: ASC issuer. Alias: api-issuer-secret'
+    required: false
+    default: 'apple-asc-api-issuer'
+  api-issuer-secret:
+    description: 'Deprecated alias for api_issuer_secret'
+    required: false
+    default: ''
+  api_key_id_secret:
+    description: 'Secret Manager id: ASC key id. Alias: api-key-id-secret'
+    required: false
+    default: 'apple-asc-api-key-id'
+  api-key-id-secret:
+    description: 'Deprecated alias for api_key_id_secret'
+    required: false
+    default: ''
+  rcodesign_version:
+    description: 'apple-codesign release. Alias: rcodesign-version'
+    required: false
+    default: '0.27.0'
+  rcodesign-version:
+    description: 'Deprecated alias for rcodesign_version'
+    required: false
+    default: ''
+  rcodesign_sha256:
+    description: 'Expected sha256 of the rcodesign tarball. Alias: rcodesign-sha256'
+    required: false
+    default: ''
+  rcodesign-sha256:
+    description: 'Deprecated alias for rcodesign_sha256'
+    required: false
+    default: ''
+
 outputs:
-  os-code-signature: {description: 'Compact JSON metadata', value: '${{ steps.sign.outputs.os-code-signature }}'}
+  os_code_signature:
+    description: 'Compact JSON metadata'
+    value: ${{ steps.sign.outputs.os_code_signature }}
+  os-code-signature:
+    description: 'Deprecated alias for os_code_signature'
+    value: ${{ steps.sign.outputs.os_code_signature }}
+
 runs:
   using: 'composite'
   steps:
+    - name: Resolve inputs
+      id: args
+      shell: bash
+      env:
+        BINARY_PATH: ${{ inputs.binary_path }}
+        BINARY_PATH_L: ${{ inputs['binary-path'] }}
+        WIF: ${{ inputs.workload_identity_provider }}
+        WIF_L: ${{ inputs['workload-identity-provider'] }}
+        PROJECT: ${{ inputs.gcp_project }}
+        PROJECT_L: ${{ inputs['gcp-project'] }}
+        SA: ${{ inputs.service_account }}
+        SA_L: ${{ inputs['service-account'] }}
+        CERT_SECRET: ${{ inputs.certificate_secret }}
+        CERT_SECRET_L: ${{ inputs['certificate-secret'] }}
+        CERT_PW_SECRET: ${{ inputs.certificate_password_secret }}
+        CERT_PW_SECRET_L: ${{ inputs['certificate-password-secret'] }}
+        NOTARY_KEY: ${{ inputs.notary_key_secret }}
+        NOTARY_KEY_L: ${{ inputs['notary-key-secret'] }}
+        ISSUER: ${{ inputs.api_issuer_secret }}
+        ISSUER_L: ${{ inputs['api-issuer-secret'] }}
+        KEY_ID: ${{ inputs.api_key_id_secret }}
+        KEY_ID_L: ${{ inputs['api-key-id-secret'] }}
+        RVER: ${{ inputs.rcodesign_version }}
+        RVER_L: ${{ inputs['rcodesign-version'] }}
+        RSHA: ${{ inputs.rcodesign_sha256 }}
+        RSHA_L: ${{ inputs['rcodesign-sha256'] }}
+      run: |
+        set -euo pipefail
+        pick() { [[ -n "$1" ]] && echo "$1" || echo "$2"; }
+        pick_def() { local v; v="$(pick "$1" "$2")"; [[ -n "$v" ]] && echo "$v" || echo "$3"; }
+        BINARY="$(pick "$BINARY_PATH" "$BINARY_PATH_L")"
+        WIF_V="$(pick "$WIF" "$WIF_L")"
+        PROJECT_V="$(pick "$PROJECT" "$PROJECT_L")"
+        SA_V="$(pick "$SA" "$SA_L")"
+        CERT_S="$(pick_def "$CERT_SECRET" "$CERT_SECRET_L" "apple-certificate-p12")"
+        CERT_PW_S="$(pick_def "$CERT_PW_SECRET" "$CERT_PW_SECRET_L" "apple-certificate-password")"
+        NOTARY_S="$(pick_def "$NOTARY_KEY" "$NOTARY_KEY_L" "apple-asc-api-key-p8")"
+        ISSUER_S="$(pick_def "$ISSUER" "$ISSUER_L" "apple-asc-api-issuer")"
+        KEY_ID_S="$(pick_def "$KEY_ID" "$KEY_ID_L" "apple-asc-api-key-id")"
+        RVER_V="$(pick_def "$RVER" "$RVER_L" "0.27.0")"
+        RSHA_V="$(pick "$RSHA" "$RSHA_L")"
+        for name in BINARY WIF_V PROJECT_V; do
+          if [[ -z "${!name}" ]]; then
+            echo "::error::Missing required input ($name)"
+            exit 1
+          fi
+        done
+        {
+          echo "binary_path=$BINARY"
+          echo "wif=$WIF_V"
+          echo "project=$PROJECT_V"
+          echo "service_account=$SA_V"
+          echo "certificate_secret=$CERT_S"
+          echo "certificate_password_secret=$CERT_PW_S"
+          echo "notary_key_secret=$NOTARY_S"
+          echo "api_issuer_secret=$ISSUER_S"
+          echo "api_key_id_secret=$KEY_ID_S"
+          echo "rcodesign_version=$RVER_V"
+          echo "rcodesign_sha256=$RSHA_V"
+        } >> "$GITHUB_OUTPUT"
+
     - name: Install rcodesign
       shell: bash
-      env: {RVER: '${{ inputs.rcodesign-version }}', RSHA: '${{ inputs.rcodesign-sha256 }}'}
+      env:
+        RVER: ${{ steps.args.outputs.rcodesign_version }}
+        RSHA: ${{ steps.args.outputs.rcodesign_sha256 }}
       run: |
         set -euo pipefail
         mkdir -p "$RUNNER_TEMP/bin"
         ARCH="$(uname -m)"; [ "$ARCH" = "arm64" ] && ARCH="aarch64"
         ASSET="apple-codesign-${RVER}-${ARCH}-apple-darwin"
         curl -fSL "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${RVER}/${ASSET}.tar.gz" -o "$RUNNER_TEMP/rc.tar.gz"
-        if [ -n "$RSHA" ]; then echo "${RSHA}  $RUNNER_TEMP/rc.tar.gz" | shasum -a 256 -c - || { echo "::error::rcodesign sha256 mismatch"; exit 1; }; else echo "::warning::rcodesign-sha256 not pinned"; fi
+        if [ -n "$RSHA" ]; then
+          echo "${RSHA}  $RUNNER_TEMP/rc.tar.gz" | shasum -a 256 -c - || { echo "::error::rcodesign sha256 mismatch"; exit 1; }
+        else
+          echo "::warning::rcodesign_sha256 not pinned"
+        fi
         tar -xzf "$RUNNER_TEMP/rc.tar.gz" -C "$RUNNER_TEMP"
         mv "$RUNNER_TEMP/${ASSET}/rcodesign" "$RUNNER_TEMP/bin/rcodesign"
         chmod +x "$RUNNER_TEMP/bin/rcodesign"
@@ -40,20 +193,23 @@ runs:
         "$RUNNER_TEMP/bin/rcodesign" --version
 
     - name: Authenticate to GCP (Secret Manager, ADC)
-      uses: google-github-actions/auth@v2
+      uses: ./gcp-wif-auth
       with:
-        workload_identity_provider: ${{ inputs.workload-identity-provider }}
-        project_id: ${{ inputs.gcp-project }}
-        service_account: ${{ inputs.service-account }}
-        create_credentials_file: true
+        workload_identity_provider: ${{ steps.args.outputs.wif }}
+        project_id: ${{ steps.args.outputs.project }}
+        service_account: ${{ steps.args.outputs.service_account }}
+        setup_gcloud: 'false'
+        verify_authentication: 'false'
+        log_jwt_info: 'false'
+        create_credentials_file: 'true'
 
     - name: Fetch Apple certificate (Secret Manager)
       id: cert
       uses: google-github-actions/get-secretmanager-secrets@v2
       with:
         secrets: |-
-          p12:${{ inputs.gcp-project }}/${{ inputs.certificate-secret }}
-          p12pw:${{ inputs.gcp-project }}/${{ inputs.certificate-password-secret }}
+          p12:${{ steps.args.outputs.project }}/${{ steps.args.outputs.certificate_secret }}
+          p12pw:${{ steps.args.outputs.project }}/${{ steps.args.outputs.certificate_password_secret }}
 
     - name: Fetch notarization secrets (Secret Manager)
       id: notary
@@ -61,15 +217,15 @@ runs:
       uses: google-github-actions/get-secretmanager-secrets@v2
       with:
         secrets: |-
-          p8:${{ inputs.gcp-project }}/${{ inputs.notary-key-secret }}
-          issuer:${{ inputs.gcp-project }}/${{ inputs.api-issuer-secret }}
-          keyid:${{ inputs.gcp-project }}/${{ inputs.api-key-id-secret }}
+          p8:${{ steps.args.outputs.project }}/${{ steps.args.outputs.notary_key_secret }}
+          issuer:${{ steps.args.outputs.project }}/${{ steps.args.outputs.api_issuer_secret }}
+          keyid:${{ steps.args.outputs.project }}/${{ steps.args.outputs.api_key_id_secret }}
 
     - name: Sign and optionally notarize
       id: sign
       shell: bash
       env:
-        BINARY_PATH: ${{ inputs.binary-path }}
+        BINARY_PATH: ${{ steps.args.outputs.binary_path }}
         NOTARIZE: ${{ inputs.notarize }}
         P12_B64: ${{ steps.cert.outputs.p12 }}
         P12_PASSWORD: ${{ steps.cert.outputs.p12pw }}
@@ -77,27 +233,36 @@ runs:
         APPLE_API_ISSUER: ${{ steps.notary.outputs.issuer }}
         APPLE_API_KEY: ${{ steps.notary.outputs.keyid }}
       run: |
-        set -euo pipefail   # no `set -x`: would echo decoded key material
+        set -euo pipefail
         P12="$RUNNER_TEMP/rcodesign-cert.p12"
         ( umask 077; printf '%s' "$P12_B64" | base64 --decode > "$P12" )
         rcodesign sign --p12-file "$P12" --p12-password "$P12_PASSWORD" --code-signature-flags runtime "$BINARY_PATH"
         rm -f "$P12"
         if [[ "$NOTARIZE" == "true" ]]; then
           [ -n "$P8_B64" ] && [ -n "$APPLE_API_ISSUER" ] && [ -n "$APPLE_API_KEY" ] || { echo "::error::notarize=true but notary secrets missing"; exit 1; }
-          P8="$RUNNER_TEMP/AuthKey.p8"; ( umask 077; printf '%s' "$P8_B64" | base64 --decode > "$P8" ); chmod 600 "$P8"
-          ZIP="${BINARY_PATH}.zip"; zip -j "$ZIP" "$BINARY_PATH"
+          P8="$RUNNER_TEMP/AuthKey.p8"
+          ( umask 077; printf '%s' "$P8_B64" | base64 --decode > "$P8" )
+          chmod 600 "$P8"
+          ZIP="${BINARY_PATH}.zip"
+          zip -j "$ZIP" "$BINARY_PATH"
           OUT=$(xcrun notarytool submit "$ZIP" --issuer "$APPLE_API_ISSUER" --key-id "$APPLE_API_KEY" --key "$P8" --output-format json --wait)
-          ID=$(echo "$OUT" | jq -r '.id'); ST=$(echo "$OUT" | jq -r '.status')
-          if [[ "$ST" != "Accepted" ]]; then echo "::error::notarization $ST"; echo "$OUT" | jq .; exit 1; fi
-          echo "os-code-signature=$(jq -cn --arg id "$ID" '{"type":"apple-notarized","submissionId":$id}')" >> "$GITHUB_OUTPUT"
+          ID=$(echo "$OUT" | jq -r '.id')
+          ST=$(echo "$OUT" | jq -r '.status')
+          if [[ "$ST" != "Accepted" ]]; then
+            echo "::error::notarization $ST"
+            echo "$OUT" | jq .
+            exit 1
+          fi
+          echo "os_code_signature=$(jq -cn --arg id "$ID" '{"type":"apple-notarized","submissionId":$id}')" >> "$GITHUB_OUTPUT"
         else
-          echo 'os-code-signature={"type":"apple-codesigned"}' >> "$GITHUB_OUTPUT"
+          echo 'os_code_signature={"type":"apple-codesigned"}' >> "$GITHUB_OUTPUT"
         fi
 
     - name: Shred secrets (persistent runner)
       if: always()
       shell: bash
-      env: {BINARY_PATH: '${{ inputs.binary-path }}'}
+      env:
+        BINARY_PATH: ${{ steps.args.outputs.binary_path }}
       run: |
         for f in "$RUNNER_TEMP/rcodesign-cert.p12" "$RUNNER_TEMP/AuthKey.p8"; do
           [ -f "$f" ] && { rm -P "$f" 2>/dev/null || rm -f "$f"; }

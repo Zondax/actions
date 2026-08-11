@@ -1,49 +1,58 @@
 name: 'Setup Node.js Environment'
-description: 'Setup Node.js with mise and package manager (npm, yarn, pnpm, or bun) and install dependencies'
+description: 'Setup Node.js with mise and the requested package manager (npm, yarn, pnpm, or bun), optionally install dependencies'
 branding:
   icon: 'package'
   color: 'green'
+
 inputs:
   node_version:
-    description: 'Node.js version to install'
+    description: 'Node.js major/version for mise (recommended: 24; 22 supported; 20 is EOL)'
     required: false
-    default: '22'
+    default: '24'
   package_manager:
     description: 'Package manager to use (npm, yarn, pnpm, or bun)'
     required: false
     default: 'npm'
   yarn_version:
-    description: 'Yarn version to install'
+    description: 'Yarn version for mise (when package_manager is yarn)'
     required: false
-    default: 'latest'
+    default: '4'
   pnpm_version:
-    description: 'PNPM version to install'
+    description: 'pnpm version for mise github:pnpm/pnpm backend (prefix match, e.g. "10")'
     required: false
-    default: 'latest'
+    default: '10'
   bun_version:
-    description: 'Bun version to install'
+    description: 'Bun version for mise (when package_manager is bun)'
     required: false
-    default: 'latest'
+    default: '1'
+  install_typescript:
+    description: 'Also install npm:typescript via mise and verify tsc'
+    required: false
+    default: 'false'
+  typescript_version:
+    description: 'TypeScript version when install_typescript is true'
+    required: false
+    default: '5'
   install_deps:
-    description: 'Install dependencies after setup'
+    description: 'Install package dependencies after setup'
     required: false
     default: 'true'
   working_directory:
     description: 'Working directory for package operations'
     required: false
     default: '.'
-  cache_dependencies:
-    description: 'Cache dependencies'
-    required: false
-    default: 'true'
   autoinit_env:
-    description: 'Run env:init:ci script after installing dependencies'
+    description: 'Run env:init:ci after installing dependencies'
     required: false
     default: 'false'
   allow_lockfile_modifications:
     description: 'Allow package managers to create or modify lockfiles'
     required: false
     default: 'true'
+  github_token:
+    description: 'Token for mise GitHub-backed tools (pnpm, etc.)'
+    required: false
+    default: ${{ github.token }}
 
 outputs:
   pm:
@@ -52,118 +61,147 @@ outputs:
   pm_run:
     description: 'Package manager run command'
     value: ${{ steps.set-pm.outputs.pm_run }}
-  cache_hit:
-    description: 'Whether the cache was hit'
-    value: ${{ steps.cache.outputs.cache-hit }}
+  node_version:
+    description: 'Resolved Node.js version string (from node --version)'
+    value: ${{ steps.verify.outputs.node_version }}
 
 runs:
-  using: "composite"
+  using: 'composite'
   steps:
-    - name: Install mise
-      uses: jdx/mise-action@v2
-    
-    - name: Setup Node.js with mise
+    - name: Setup mise
+      uses: ./setup-mise
+      with:
+        github_token: ${{ inputs.github_token }}
+
+    - name: Warn on EOL Node majors
       shell: bash
+      env:
+        NODE_VERSION: ${{ inputs.node_version }}
       run: |
-        mise use --global node@${{ inputs.node_version }}
-        mise install
-    
+        set -euo pipefail
+        MAJOR="${NODE_VERSION%%.*}"
+        MAJOR="${MAJOR#v}"
+        if [[ "$MAJOR" =~ ^[0-9]+$ ]] && (( MAJOR <= 20 )); then
+          echo "::warning::Node ${MAJOR} is EOL. Prefer node_version 22 (Maintenance LTS) or 24 (recommended)."
+        fi
+
     - name: Set package manager variables
       id: set-pm
       shell: bash
       run: |
+        set -euo pipefail
         case "${{ inputs.package_manager }}" in
           bun)
-            echo "pm=bun" >> $GITHUB_OUTPUT
-            echo "pm_run=bun run" >> $GITHUB_OUTPUT
+            echo "pm=bun" >> "$GITHUB_OUTPUT"
+            echo "pm_run=bun run" >> "$GITHUB_OUTPUT"
             ;;
           yarn)
-            echo "pm=yarn" >> $GITHUB_OUTPUT
-            echo "pm_run=yarn run" >> $GITHUB_OUTPUT
+            echo "pm=yarn" >> "$GITHUB_OUTPUT"
+            echo "pm_run=yarn run" >> "$GITHUB_OUTPUT"
             ;;
           pnpm)
-            echo "pm=pnpm" >> $GITHUB_OUTPUT
-            echo "pm_run=pnpm run" >> $GITHUB_OUTPUT
-            ;;
-          *)
-            echo "pm=npm" >> $GITHUB_OUTPUT
-            echo "pm_run=npm run" >> $GITHUB_OUTPUT
-            ;;
-        esac
-    
-    - name: Install all package managers with mise
-      shell: bash
-      run: |
-        mise use --global yarn@${{ inputs.yarn_version }}
-        # `pnpm` resolves through aqua:pnpm/pnpm by default, whose registry
-        # expects `pnpm-<os>-<arch>.tar.gz` while pnpm v10 ships raw binaries
-        # on Linux (`pnpm-linux-x64`, no extension). Using the github backend
-        # explicitly avoids that asset-name mismatch and works on every
-        # supported platform. Backward compatible: any value that was valid
-        # for `pnpm@<v>` is also valid for `github:pnpm/pnpm@<v>`.
-        mise use --global "github:pnpm/pnpm@${{ inputs.pnpm_version }}"
-        mise use --global bun@${{ inputs.bun_version }}
-        mise use --global npm:typescript@latest
-        mise install
-    
-    - name: Verify package manager installation
-      shell: bash
-      run: |
-        echo "Verifying ${{ inputs.package_manager }} installation..."
-        case "${{ inputs.package_manager }}" in
-          bun)
-            bun --version || { echo "Error: Bun not found in PATH"; exit 1; }
-            ;;
-          yarn)
-            yarn --version || { echo "Error: Yarn not found in PATH"; exit 1; }
-            ;;
-          pnpm)
-            pnpm --version || { echo "Error: PNPM not found in PATH"; exit 1; }
+            echo "pm=pnpm" >> "$GITHUB_OUTPUT"
+            echo "pm_run=pnpm run" >> "$GITHUB_OUTPUT"
             ;;
           npm)
-            npm --version || { echo "Error: NPM not found in PATH"; exit 1; }
+            echo "pm=npm" >> "$GITHUB_OUTPUT"
+            echo "pm_run=npm run" >> "$GITHUB_OUTPUT"
+            ;;
+          *)
+            echo "::error::Unsupported package_manager '${{ inputs.package_manager }}' (npm|yarn|pnpm|bun)"
+            exit 1
             ;;
         esac
-        
-        # Also verify TypeScript installation
-        echo "Verifying TypeScript installation..."
-        tsc --version || { echo "Error: TypeScript not found in PATH"; exit 1; }
-    
+
+    - name: Install Node + requested package manager
+      shell: bash
+      env:
+        NODE_VERSION: ${{ inputs.node_version }}
+        PM: ${{ inputs.package_manager }}
+        YARN_VERSION: ${{ inputs.yarn_version }}
+        PNPM_VERSION: ${{ inputs.pnpm_version }}
+        BUN_VERSION: ${{ inputs.bun_version }}
+        INSTALL_TS: ${{ inputs.install_typescript }}
+        TS_VERSION: ${{ inputs.typescript_version }}
+      run: |
+        set -euo pipefail
+        mise use --global "node@${NODE_VERSION}"
+
+        case "$PM" in
+          yarn)
+            mise use --global "yarn@${YARN_VERSION}"
+            ;;
+          pnpm)
+            # github backend: aqua asset names break on pnpm v10 Linux binaries
+            mise use --global "github:pnpm/pnpm@${PNPM_VERSION}"
+            ;;
+          bun)
+            mise use --global "bun@${BUN_VERSION}"
+            ;;
+          npm)
+            # ships with node
+            ;;
+        esac
+
+        if [[ "$INSTALL_TS" == "true" ]]; then
+          mise use --global "npm:typescript@${TS_VERSION}"
+        fi
+
+        mise install
+        mise reshim
+
+    - name: Verify toolchain
+      id: verify
+      shell: bash
+      run: |
+        set -euo pipefail
+        node_version="$(node --version)"
+        echo "Node.js: $node_version"
+        echo "node_version=$node_version" >> "$GITHUB_OUTPUT"
+
+        case "${{ inputs.package_manager }}" in
+          bun)  bun --version ;;
+          yarn) yarn --version ;;
+          pnpm) pnpm --version ;;
+          npm)  npm --version ;;
+        esac
+
+        if [[ "${{ inputs.install_typescript }}" == "true" ]]; then
+          tsc --version
+        fi
+
     - name: Install dependencies
       if: inputs.install_deps == 'true'
       shell: bash
       working-directory: ${{ inputs.working_directory }}
       run: |
+        set -euo pipefail
+        PM='${{ steps.set-pm.outputs.pm }}'
         if [[ "${{ inputs.allow_lockfile_modifications }}" == "false" ]]; then
           case "${{ inputs.package_manager }}" in
             yarn)
-              # For Yarn, use --immutable to prevent any lockfile changes
-              ${{ steps.set-pm.outputs.pm }} install --immutable || ${{ steps.set-pm.outputs.pm }} install --frozen-lockfile
+              "$PM" install --immutable || "$PM" install --frozen-lockfile
               ;;
-            pnpm)
-              ${{ steps.set-pm.outputs.pm }} install --frozen-lockfile
+            pnpm|bun)
+              "$PM" install --frozen-lockfile
               ;;
-            bun)
-              ${{ steps.set-pm.outputs.pm }} install --frozen-lockfile
-              ;;
-            *)
-              # npm - use ci command if package-lock.json exists
-              if [[ -f "package-lock.json" ]]; then
-                ${{ steps.set-pm.outputs.pm }} ci
+            npm)
+              if [[ -f package-lock.json ]]; then
+                npm ci
               else
                 echo "Warning: No package-lock.json found, using regular install"
-                ${{ steps.set-pm.outputs.pm }} install
+                npm install
               fi
               ;;
           esac
         else
-          # Allow modifications - normal install
-          ${{ steps.set-pm.outputs.pm }} install
+          "$PM" install
         fi
-    
+
     - name: Initialize environment
       if: inputs.autoinit_env == 'true'
       shell: bash
       working-directory: ${{ inputs.working_directory }}
       run: |
+        set -euo pipefail
         ${{ steps.set-pm.outputs.pm_run }} env:init:ci

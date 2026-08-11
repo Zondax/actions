@@ -3,6 +3,7 @@ description: 'Authenticate with Google Cloud using Workload Identity Federation 
 branding:
   icon: 'cloud'
   color: 'blue'
+
 inputs:
   workload_identity_provider:
     description: 'Workload Identity Provider resource name'
@@ -10,95 +11,69 @@ inputs:
   project_id:
     description: 'GCP Project ID'
     required: false
+    default: ''
   service_account:
-    description: 'Service account email to impersonate'
+    description: 'Service account email to impersonate (empty = direct principal-set WIF when allowed)'
     required: false
+    default: ''
   setup_gcloud:
     description: 'Install and configure gcloud SDK'
     required: false
     default: 'true'
   gcloud_version:
-    description: 'Version of gcloud SDK to install'
+    description: 'gcloud SDK version (prefer a pin over latest in production)'
     required: false
-    default: 'latest'
+    default: '519.0.0'
   gcloud_components:
     description: 'Additional gcloud components to install (comma-separated)'
     required: false
     default: ''
   log_jwt_info:
-    description: 'Log JWT token information for debugging'
+    description: 'Reserved for future JWT debug output (currently unused; kept for API stability)'
     required: false
-    default: 'true'
+    default: 'false'
   verify_authentication:
     description: 'Verify authentication by running gcloud commands'
     required: false
     default: 'true'
   export_credentials:
-    description: 'Export credentials to environment'
+    description: 'Export credentials to environment via google-github-actions/auth'
     required: false
     default: 'true'
   token_format:
-    description: 'Token format to request from google-github-actions/auth (empty | access_token | id_token). Required to populate the access_token output.'
+    description: 'Token format from google-github-actions/auth (empty | access_token | id_token). Required for access_token output.'
     required: false
     default: ''
   create_credentials_file:
-    description: "Whether auth writes an ADC credentials file (true/false). Composite-action inputs are strings — pass quoted 'false' for token-only flows."
+    description: "Whether auth writes an ADC credentials file (true/false). Pass 'false' for token-only flows."
     required: false
     default: 'true'
 
 outputs:
   credentials_path:
     description: 'Path to the generated credentials file'
-    value: ${{ steps.auth.outputs.credentials_file_path || steps.auth-project.outputs.credentials_file_path || steps.auth-sa.outputs.credentials_file_path || steps.auth-both.outputs.credentials_file_path }}
+    value: ${{ steps.auth.outputs.credentials_file_path }}
   access_token:
     description: 'Access token for authenticated requests'
-    value: ${{ steps.auth.outputs.access_token || steps.auth-project.outputs.access_token || steps.auth-sa.outputs.access_token || steps.auth-both.outputs.access_token }}
+    value: ${{ steps.auth.outputs.access_token }}
   project_id:
     description: 'GCP Project ID'
-    value: ${{ steps.auth.outputs.project_id || steps.auth-project.outputs.project_id || steps.auth-sa.outputs.project_id || steps.auth-both.outputs.project_id }}
+    value: ${{ steps.auth.outputs.project_id }}
 
 runs:
-  using: "composite"
-  steps:    
-    - name: Authenticate with Google Cloud (WIF only)
-      if: inputs.project_id == '' && inputs.service_account == ''
+  using: 'composite'
+  steps:
+    # Single auth step: empty project_id / service_account are treated as unset by the upstream action.
+    - name: Authenticate with Google Cloud
       id: auth
       uses: google-github-actions/auth@v2
       with:
         workload_identity_provider: ${{ inputs.workload_identity_provider }}
-        token_format: ${{ inputs.token_format }}
-        create_credentials_file: ${{ inputs.create_credentials_file }}
-
-    - name: Authenticate with Google Cloud (WIF + project)
-      if: inputs.project_id != '' && inputs.service_account == ''
-      id: auth-project
-      uses: google-github-actions/auth@v2
-      with:
-        workload_identity_provider: ${{ inputs.workload_identity_provider }}
-        project_id: ${{ inputs.project_id }}
-        token_format: ${{ inputs.token_format }}
-        create_credentials_file: ${{ inputs.create_credentials_file }}
-
-    - name: Authenticate with Google Cloud (WIF + service account)
-      if: inputs.project_id == '' && inputs.service_account != ''
-      id: auth-sa
-      uses: google-github-actions/auth@v2
-      with:
-        workload_identity_provider: ${{ inputs.workload_identity_provider }}
-        service_account: ${{ inputs.service_account }}
-        token_format: ${{ inputs.token_format }}
-        create_credentials_file: ${{ inputs.create_credentials_file }}
-
-    - name: Authenticate with Google Cloud (WIF + both)
-      if: inputs.project_id != '' && inputs.service_account != ''
-      id: auth-both
-      uses: google-github-actions/auth@v2
-      with:
-        workload_identity_provider: ${{ inputs.workload_identity_provider }}
         project_id: ${{ inputs.project_id }}
         service_account: ${{ inputs.service_account }}
         token_format: ${{ inputs.token_format }}
         create_credentials_file: ${{ inputs.create_credentials_file }}
+        export_environment_variables: ${{ inputs.export_credentials }}
 
     - name: Set up Google Cloud SDK
       if: inputs.setup_gcloud == 'true'
@@ -106,42 +81,27 @@ runs:
       with:
         version: ${{ inputs.gcloud_version }}
         install_components: ${{ inputs.gcloud_components }}
-    
+
     - name: Verify GCP Authentication
       if: inputs.verify_authentication == 'true'
       shell: bash
+      env:
+        SERVICE_ACCOUNT: ${{ inputs.service_account }}
       run: |
-        echo "🔑 Checking GCP Authentication..."
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "📋 Authenticated Account:"
-        echo "    $(gcloud auth list --format="table(status,account)" 2>/dev/null || echo "⚠️ No authenticated accounts found")"
-        
-        echo ""
-        echo "🌐 Project Configuration:"
-        PROJECT=$(gcloud config get-value project 2>/dev/null)
-        if [ -n "$PROJECT" ]; then
-          echo "    ✅ Current project: $PROJECT"
+        set -euo pipefail
+        echo "Checking GCP Authentication..."
+        echo "Authenticated accounts:"
+        gcloud auth list --format="table(status,account)" 2>/dev/null || echo "No authenticated accounts found"
+
+        PROJECT="$(gcloud config get-value project 2>/dev/null || true)"
+        if [[ -n "$PROJECT" && "$PROJECT" != "(unset)" ]]; then
+          echo "Current project: $PROJECT"
         else
-          echo "    ⚠️ No project configured"
+          echo "No project configured"
         fi
-        
-        echo ""
-        echo "⚙️ Current Configuration:"
-        echo "$(gcloud config list --format="yaml" 2>/dev/null | sed 's/^/    /' || echo "    ⚠️ Unable to retrieve configuration")"
-        
-        if [ -n "${{ inputs.service_account }}" ]; then
-          echo ""
-          echo "👤 Service Account:"
-          echo "    ${{ inputs.service_account }}"
+
+        if [[ -n "$SERVICE_ACCOUNT" ]]; then
+          echo "Service account input: $SERVICE_ACCOUNT"
         fi
-        
-        echo ""
-        echo "🔌 Enabled APIs:"
-        if gcloud config get-value project &>/dev/null; then
-          gcloud services list --enabled --format="table(NAME:label=API_NAME)" 2>/dev/null | sed 's/^/    /' || echo "    ⚠️ Unable to list APIs"
-        else
-          echo "    ⚠️ Project not set, unable to list APIs"
-        fi
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        # Always exit with success as this is diagnostic only
+        # Diagnostic only
         exit 0

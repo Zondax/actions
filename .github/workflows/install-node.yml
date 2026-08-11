@@ -1,0 +1,102 @@
+name: Node.js Action
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 1 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-node-environment:
+    name: Node ${{ matrix.node_version }} | ${{ matrix.package_manager }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Node 20 is EOL — do not re-add. 22 = Maintenance LTS, 24 = recommended.
+        node_version: ['22', '24']
+        package_manager: [npm, yarn, pnpm, bun]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js ${{ matrix.node_version }} with ${{ matrix.package_manager }}
+        id: setup-node
+        uses: ./setup-node-env
+        with:
+          node_version: ${{ matrix.node_version }}
+          package_manager: ${{ matrix.package_manager }}
+          install_deps: false
+          autoinit_env: false
+
+      - name: Verify Installation
+        run: |
+          set -euo pipefail
+          node_version=$(node --version)
+          echo "Node.js: $node_version"
+          [[ "$node_version" == v${{ matrix.node_version }}.* ]] || exit 1
+
+          case "${{ matrix.package_manager }}" in
+            npm)  npm --version  ;;
+            yarn) yarn --version ;;
+            pnpm) pnpm --version ;;
+            bun)  bun --version  ;;
+          esac
+
+          # TypeScript is opt-in now — must not be required by default
+          if command -v tsc >/dev/null 2>&1; then
+            echo "tsc unexpectedly present without install_typescript"
+          fi
+
+          echo "✅ Node.js ${{ matrix.node_version }} + ${{ matrix.package_manager }} working!"
+
+  test-setup-mise:
+    name: setup-mise smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./setup-mise
+      - run: mise --version
+
+  test-release-hold:
+    name: release-hold smoke (hold_period=0)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Skip hold
+        id: hold
+        uses: ./release-hold
+        with:
+          hold_period: '0'
+      - name: Assert passed
+        run: |
+          test "${{ steps.hold.outputs.passed }}" = "true"
+
+  test-react-doctor-parse:
+    name: react-doctor parse-report unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./setup-mise
+      - name: Install node for parser
+        run: |
+          mise use --global node@24
+          mise install
+      - name: Run parse-report on fixture
+        env:
+          GITHUB_OUTPUT: ${{ runner.temp }}/out.txt
+        run: |
+          cat > "${{ runner.temp }}/report.json" <<'JSON'
+          {"ok":true,"mode":"full","version":"0.9.11","diagnostics":[{"filePath":"a.tsx","plugin":"react","rule":"x","severity":"warning","message":"m","help":"h","line":1}],"summary":{"errorCount":0,"warningCount":1,"affectedFileCount":1,"totalDiagnosticCount":1,"score":80}}
+          JSON
+          node react-doctor/scripts/parse-report.mjs "${{ runner.temp }}/report.json" "${{ runner.temp }}/summary.md"
+          grep -q "1 warning" "${{ runner.temp }}/summary.md"
+          grep -q "total-issues=1" "${{ runner.temp }}/out.txt"
