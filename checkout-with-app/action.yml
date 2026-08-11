@@ -3,6 +3,7 @@ description: 'Checkout repository with optional GitHub App authentication and gi
 branding:
   icon: 'git-branch'
   color: 'gray-dark'
+
 inputs:
   github_app_auth:
     description: 'Use GitHub App Token'
@@ -49,7 +50,7 @@ outputs:
     value: ${{ steps.app-token.outputs.token || github.token }}
 
 runs:
-  using: "composite"
+  using: 'composite'
   steps:
     - name: Generate GitHub App Token
       id: app-token
@@ -61,47 +62,41 @@ runs:
         repositories: |
           ${{ github.event.repository.name }}
           ${{ inputs.github_app_repos }}
-    
+
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         ref: ${{ inputs.ref }}
         fetch-depth: ${{ inputs.fetch_depth }}
         submodules: ${{ inputs.checkout_submodules }}
         token: ${{ steps.app-token.outputs.token || github.token }}
-    
+
     - name: Patch git clone
       if: inputs.patch_git_config == 'true'
       shell: bash
       run: |
-        # Function to safely run git config with retry logic
+        set -euo pipefail
         safe_git_config() {
           local max_attempts=3
           local attempt=1
-
-          # Clean up any stale lock files first (self-hosted runners)
           if [[ -f "$HOME/.gitconfig.lock" ]]; then
             echo "Removing stale git config lock file..."
             rm -f "$HOME/.gitconfig.lock"
           fi
-
           while [ $attempt -le $max_attempts ]; do
             if git config --global --add safe.directory '*' 2>/dev/null; then
               echo "Successfully added safe directory to git config"
               return 0
             fi
-
             echo "Attempt $attempt failed, cleaning lock file and retrying..."
             rm -f "$HOME/.gitconfig.lock" 2>/dev/null || true
-            sleep $((attempt * 2))  # Exponential backoff: 2, 4, 6 seconds
+            sleep $((attempt * 2))
             attempt=$((attempt + 1))
           done
-
           echo "Failed to update git config after $max_attempts attempts"
           return 1
         }
 
-        # Skip sudo on Windows as it's not available
         if [[ "${{ runner.os }}" == "Windows" ]]; then
           git config --global --add safe.directory '*'
         elif [[ "${{ inputs.use_sudo }}" == "true" ]]; then
@@ -109,15 +104,18 @@ runs:
         else
           safe_git_config
         fi
-    
+
     - name: Configure Git for private repos
       if: inputs.github_app_auth != 'false'
       shell: bash
+      env:
+        APP_TOKEN: ${{ steps.app-token.outputs.token }}
       run: |
-        git config --global url."https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/".insteadOf "https://github.com/"
-        
+        set -euo pipefail
+        git config --global url."https://x-access-token:${APP_TOKEN}@github.com/".insteadOf "https://github.com/"
+
     - name: Configure Go private modules
       if: inputs.goprivate != ''
       shell: bash
       run: |
-        echo "GOPRIVATE=${{ inputs.goprivate }}" >> $GITHUB_ENV
+        echo "GOPRIVATE=${{ inputs.goprivate }}" >> "$GITHUB_ENV"
