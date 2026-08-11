@@ -1,69 +1,197 @@
 name: 'Sign Linux Binary (KMS OpenPGP)'
-description: 'WIF auth, install kunobi-pgp-kms, materialize the OpenPGP cert, and produce an armored detached signature backed by GCP KMS.'
+description: 'WIF auth, install kunobi-pgp-kms via mise, materialize the OpenPGP cert, and produce an armored detached signature backed by GCP KMS.'
+
+# snake_case preferred; kebab-case aliases kept for existing kunobi call sites.
 inputs:
-  target-path: {description: 'File to sign (e.g. the .tar.gz archive)', required: true}
-  workload-identity-provider: {description: 'WIF provider (vars.PGP_SIGN_WIF_PROVIDER)', required: true}
-  gcp-project-id: {description: 'GCP project (vars.PGP_SIGN_GCP_PROJECT_ID)', required: true}
-  service-account: {description: 'SA to impersonate; empty = direct principal-set', required: false, default: ''}
-  signer-token: {description: 'Token with read on private kunobi-ninja/kunobi-pgp-kms (App installation token or PAT)', required: true}
-  kms-key: {description: 'KMS key version path (vars.PGP_SIGN_KMS_KEY_VERSION)', required: true}
-  cert-base64: {description: 'Base64 OpenPGP public cert (secrets.PGP_CERT_BASE64)', required: true}
-  signer-version: {description: 'kunobi-pgp-kms tag', required: false, default: 'latest'}
+  target_path:
+    description: 'File to sign (e.g. the .tar.gz archive). Alias: target-path'
+    required: false
+    default: ''
+  target-path:
+    description: 'Deprecated alias for target_path'
+    required: false
+    default: ''
+  workload_identity_provider:
+    description: 'WIF provider. Alias: workload-identity-provider'
+    required: false
+    default: ''
+  workload-identity-provider:
+    description: 'Deprecated alias for workload_identity_provider'
+    required: false
+    default: ''
+  gcp_project_id:
+    description: 'GCP project. Alias: gcp-project-id'
+    required: false
+    default: ''
+  gcp-project-id:
+    description: 'Deprecated alias for gcp_project_id'
+    required: false
+    default: ''
+  service_account:
+    description: 'SA to impersonate; empty = direct principal-set. Alias: service-account'
+    required: false
+    default: ''
+  service-account:
+    description: 'Deprecated alias for service_account'
+    required: false
+    default: ''
+  signer_token:
+    description: 'Token with read on private kunobi-ninja/kunobi-pgp-kms. Alias: signer-token'
+    required: false
+    default: ''
+  signer-token:
+    description: 'Deprecated alias for signer_token'
+    required: false
+    default: ''
+  kms_key:
+    description: 'KMS key version path. Alias: kms-key'
+    required: false
+    default: ''
+  kms-key:
+    description: 'Deprecated alias for kms_key'
+    required: false
+    default: ''
+  cert_base64:
+    description: 'Base64 OpenPGP public cert. Alias: cert-base64'
+    required: false
+    default: ''
+  cert-base64:
+    description: 'Deprecated alias for cert_base64'
+    required: false
+    default: ''
+  signer_version:
+    description: 'kunobi-pgp-kms version for mise. Alias: signer-version'
+    required: false
+    default: 'latest'
+  signer-version:
+    description: 'Deprecated alias for signer_version'
+    required: false
+    default: ''
+
 outputs:
-  signature-path: {description: 'Path to the .asc', value: '${{ steps.sign.outputs.signature-path }}'}
-  cert-fingerprint: {description: 'OpenPGP V4 fingerprint', value: '${{ steps.cert.outputs.fingerprint }}'}
+  signature_path:
+    description: 'Path to the .asc'
+    value: ${{ steps.sign.outputs.signature_path }}
+  signature-path:
+    description: 'Deprecated alias for signature_path'
+    value: ${{ steps.sign.outputs.signature_path }}
+  cert_fingerprint:
+    description: 'OpenPGP V4 fingerprint'
+    value: ${{ steps.cert.outputs.fingerprint }}
+  cert-fingerprint:
+    description: 'Deprecated alias for cert_fingerprint'
+    value: ${{ steps.cert.outputs.fingerprint }}
+
 runs:
   using: 'composite'
   steps:
+    - name: Resolve non-secret inputs
+      id: args
+      shell: bash
+      env:
+        TARGET_PATH: ${{ inputs.target_path }}
+        TARGET_PATH_LEGACY: ${{ inputs['target-path'] }}
+        WIF: ${{ inputs.workload_identity_provider }}
+        WIF_LEGACY: ${{ inputs['workload-identity-provider'] }}
+        PROJECT: ${{ inputs.gcp_project_id }}
+        PROJECT_LEGACY: ${{ inputs['gcp-project-id'] }}
+        SA: ${{ inputs.service_account }}
+        SA_LEGACY: ${{ inputs['service-account'] }}
+        KMS: ${{ inputs.kms_key }}
+        KMS_LEGACY: ${{ inputs['kms-key'] }}
+        SVER: ${{ inputs.signer_version }}
+        SVER_LEGACY: ${{ inputs['signer-version'] }}
+      run: |
+        set -euo pipefail
+        pick() { [[ -n "$1" ]] && echo "$1" || echo "$2"; }
+        TARGET="$(pick "$TARGET_PATH" "$TARGET_PATH_LEGACY")"
+        WIF_V="$(pick "$WIF" "$WIF_LEGACY")"
+        PROJECT_V="$(pick "$PROJECT" "$PROJECT_LEGACY")"
+        SA_V="$(pick "$SA" "$SA_LEGACY")"
+        KMS_V="$(pick "$KMS" "$KMS_LEGACY")"
+        SVER_V="$(pick "$SVER" "$SVER_LEGACY")"
+        [[ -n "$SVER_V" ]] || SVER_V="latest"
+        for name in TARGET WIF_V PROJECT_V KMS_V; do
+          if [[ -z "${!name}" ]]; then
+            echo "::error::Missing required input ($name). Pass snake_case or kebab-case."
+            exit 1
+          fi
+        done
+        {
+          echo "target_path=$TARGET"
+          echo "wif=$WIF_V"
+          echo "project=$PROJECT_V"
+          echo "service_account=$SA_V"
+          echo "kms_key=$KMS_V"
+          echo "signer_version=$SVER_V"
+        } >> "$GITHUB_OUTPUT"
+
     - name: Authenticate with GCP (WIF)
-      uses: zondax/actions/gcp-wif-auth@v1
+      uses: ./gcp-wif-auth
       with:
-        workload_identity_provider: ${{ inputs.workload-identity-provider }}
-        project_id: ${{ inputs.gcp-project-id }}
-        service_account: ${{ inputs.service-account }}
+        workload_identity_provider: ${{ steps.args.outputs.wif }}
+        project_id: ${{ steps.args.outputs.project }}
+        service_account: ${{ steps.args.outputs.service_account }}
+        verify_authentication: 'false'
+        log_jwt_info: 'false'
+
+    - name: Setup mise
+      uses: ./setup-mise
+      with:
+        # Prefer snake_case token; fall back to kebab-case alias without writing either to outputs.
+        github_token: ${{ inputs.signer_token != '' && inputs.signer_token || inputs['signer-token'] }}
+
     - name: Install kunobi-pgp-kms via mise
       shell: bash
-      env: {VERSION: '${{ inputs.signer-version }}', MISE_GITHUB_TOKEN: '${{ inputs.signer-token }}'}
+      env:
+        VERSION: ${{ steps.args.outputs.signer_version }}
+        MISE_GITHUB_TOKEN: ${{ inputs.signer_token != '' && inputs.signer_token || inputs['signer-token'] }}
       run: |
-        set -euo pipefail   # never add `set -x` here (would echo token)
-        if ! command -v mise >/dev/null; then
-          curl -fsSL https://mise.jdx.dev/install.sh | sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"; export PATH="$HOME/.local/bin:$PATH"
+        set -euo pipefail
+        if [[ -z "${MISE_GITHUB_TOKEN:-}" ]]; then
+          echo "::error::signer_token (or signer-token) is required"
+          exit 1
         fi
         mise use --global "github:kunobi-ninja/kunobi-pgp-kms@${VERSION#v}"
+        mise install
         mise reshim
-        echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
-        export PATH="$HOME/.local/share/mise/shims:$PATH"
         kunobi-pgp-kms --version
+
     - name: Materialize OpenPGP cert
       id: cert
       shell: bash
-      env: {CERT_B64: '${{ inputs.cert-base64 }}'}
+      env:
+        CERT_B64: ${{ inputs.cert_base64 != '' && inputs.cert_base64 || inputs['cert-base64'] }}
       run: |
         set -euo pipefail
+        if [[ -z "${CERT_B64:-}" ]]; then
+          echo "::error::cert_base64 (or cert-base64) is required"
+          exit 1
+        fi
         CERT_PATH="$RUNNER_TEMP/signer.pub.asc"
         printf '%s' "$CERT_B64" | base64 -d > "$CERT_PATH"
         grep -q 'BEGIN PGP PUBLIC KEY BLOCK' "$CERT_PATH" || { echo "::error::invalid PGP cert"; exit 1; }
-        # GnuPG 2.x is `gpg` on modern Debian/Ubuntu (no `gpg2` alias). Fall back to
-        # gpg2 if that's what exists; install gnupg if neither is present.
         GPG="$(command -v gpg || command -v gpg2 || true)"
         if [ -z "$GPG" ]; then
-          # Hosted runners ship gpg; this fallback only fires elsewhere. apt needs
-          # root and the action runs unprivileged, so go through passwordless sudo.
           sudo apt-get update && sudo apt-get install -y --no-install-recommends gnupg && sudo rm -rf /var/lib/apt/lists/*
           GPG="$(command -v gpg)"
         fi
         FPR=$("$GPG" --with-colons --show-keys "$CERT_PATH" | awk -F: '/^fpr/{print $10; exit}')
         [ -z "$FPR" ] && { echo "::error::Could not extract fingerprint from $CERT_PATH"; exit 1; }
         echo "fingerprint: $FPR"
-        echo "path=$CERT_PATH" >> "$GITHUB_OUTPUT"; echo "fingerprint=$FPR" >> "$GITHUB_OUTPUT"
+        echo "path=$CERT_PATH" >> "$GITHUB_OUTPUT"
+        echo "fingerprint=$FPR" >> "$GITHUB_OUTPUT"
+
     - name: Detached-sign the archive
       id: sign
       shell: bash
-      env: {TARGET_PATH: '${{ inputs.target-path }}', CERT_PATH: '${{ steps.cert.outputs.path }}', KMS_KEY: '${{ inputs.kms-key }}'}
+      env:
+        TARGET_PATH: ${{ steps.args.outputs.target_path }}
+        CERT_PATH: ${{ steps.cert.outputs.path }}
+        KMS_KEY: ${{ steps.args.outputs.kms_key }}
       run: |
         set -euo pipefail
         SIG="${TARGET_PATH}.asc"
         kunobi-pgp-kms detach-sign --kms-key "$KMS_KEY" --cert "$CERT_PATH" --in "$TARGET_PATH" --out "$SIG"
         kunobi-pgp-kms verify --cert "$CERT_PATH" --sig "$SIG" --data "$TARGET_PATH"
-        echo "signature-path=$SIG" >> "$GITHUB_OUTPUT"
+        echo "signature_path=$SIG" >> "$GITHUB_OUTPUT"
