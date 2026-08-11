@@ -39,7 +39,7 @@ jobs:
         run: |
           echo "🎯 Testing packages: ${{ matrix.packages }}"
           packages="${{ matrix.packages }}"
-          echo "packages=$packages" >> $GITHUB_OUTPUT
+          echo "packages=$packages" >> "$GITHUB_OUTPUT"
           echo "📦 Packages to install: $packages"
 
       - name: System information
