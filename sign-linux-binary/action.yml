@@ -127,7 +127,7 @@ runs:
         } >> "$GITHUB_OUTPUT"
 
     - name: Authenticate with GCP (WIF)
-      uses: ./gcp-wif-auth
+      uses: zondax/actions/gcp-wif-auth@v1
       with:
         workload_identity_provider: ${{ steps.args.outputs.wif }}
         project_id: ${{ steps.args.outputs.project }}
@@ -136,7 +136,7 @@ runs:
         log_jwt_info: 'false'
 
     - name: Setup mise
-      uses: ./setup-mise
+      uses: zondax/actions/setup-mise@v1
       with:
         # Prefer snake_case token; fall back to kebab-case alias without writing either to outputs.
         github_token: ${{ inputs.signer_token != '' && inputs.signer_token || inputs['signer-token'] }}

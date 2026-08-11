@@ -5,7 +5,7 @@
 1. Create `my-action/action.yml` (composite).
 2. Prefer **snake_case** inputs; add kebab-case aliases only if migrating existing call sites.
 3. Bootstrap toolchains with `./setup-mise`, not ad-hoc curl installers.
-4. Compose siblings with relative paths (`./gcp-wif-auth`) so a single tag is consistent.
+4. Compose siblings with fully-qualified `zondax/actions/<name>@v1` refs (relative `./` paths resolve against the *consumer* workspace when the parent is used remotely).
 5. Document the action in the root `README.md`.
 6. Add a smoke test under `.github/workflows/` when the action is pure logic / no secrets.
 

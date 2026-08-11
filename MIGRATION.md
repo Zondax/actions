@@ -294,4 +294,18 @@ Track migrations as issues per repo, e.g. `chore(ci): migrate zondax/actions to 
 - [README.md](./README.md) — current action index and conventions  
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — adding actions / Node policy  
 - [react-doctor/README.md](./react-doctor/README.md) — gate knobs  
-- Issues #13–#21 — design rationale for this train  
+- Issues #13–#21 — design rationale for this train
+
+## 9. Hotfix: nested composite paths (v1.3.0 → v1.3.1)
+
+`v1.3.0` used relative sibling paths (`uses: ./setup-mise`) inside composites.
+When a consumer runs `zondax/actions/setup-node-env@v1`, GitHub resolves `./…`
+against the **consumer workspace**, not the actions repo — CI fails with:
+
+```text
+Can't find 'action.yml' under '.../<consumer>/setup-mise'
+```
+
+**v1.3.1** switches those to `zondax/actions/setup-mise@v1` / `gcp-wif-auth@v1`.
+No consumer YAML change required beyond picking up `@v1` / `@v1.3.1`.
+

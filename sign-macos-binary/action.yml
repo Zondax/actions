@@ -193,7 +193,7 @@ runs:
         "$RUNNER_TEMP/bin/rcodesign" --version
 
     - name: Authenticate to GCP (Secret Manager, ADC)
-      uses: ./gcp-wif-auth
+      uses: zondax/actions/gcp-wif-auth@v1
       with:
         workload_identity_provider: ${{ steps.args.outputs.wif }}
         project_id: ${{ steps.args.outputs.project }}

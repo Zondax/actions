@@ -114,7 +114,7 @@ runs:
   using: "composite"
   steps:
     - name: Setup mise
-      uses: ./setup-mise
+      uses: zondax/actions/setup-mise@v1
       with:
         github_token: ${{ inputs.github_token }}
 
