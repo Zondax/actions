@@ -32,14 +32,14 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup packages for testing
         id: packages
         run: |
           echo "🎯 Testing packages: ${{ matrix.packages }}"
           packages="${{ matrix.packages }}"
-          echo "packages=$packages" >> $GITHUB_OUTPUT
+          echo "packages=$packages" >> "$GITHUB_OUTPUT"
           echo "📦 Packages to install: $packages"
 
       - name: System information
