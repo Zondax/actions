@@ -1,0 +1,67 @@
+name: 'Setup mise'
+description: 'Canonical mise bootstrap for Zondax composites (jdx/mise-action + PATH/shims)'
+branding:
+  icon: 'download'
+  color: 'purple'
+
+inputs:
+  version:
+    description: 'mise binary version pin (empty = latest from mise-action)'
+    required: false
+    default: ''
+  cache:
+    description: 'Enable mise-action cache'
+    required: false
+    default: 'true'
+  install:
+    description: 'Run mise install for project mise.toml (usually false for composites that install tools themselves)'
+    required: false
+    default: 'false'
+  github_token:
+    description: 'Token for GitHub-hosted mise tools (rate limits / private repos)'
+    required: false
+    default: ${{ github.token }}
+  experimental:
+    description: 'Enable mise experimental features'
+    required: false
+    default: 'false'
+
+outputs:
+  cache_hit:
+    description: 'Whether the mise-action cache was hit'
+    value: ${{ steps.mise.outputs.cache-hit }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install mise
+      id: mise
+      uses: jdx/mise-action@v4
+      with:
+        version: ${{ inputs.version }}
+        cache: ${{ inputs.cache }}
+        install: ${{ inputs.install }}
+        github_token: ${{ inputs.github_token }}
+        experimental: ${{ inputs.experimental }}
+        # Always expose shims for subsequent composite steps
+        add_shims_to_path: true
+        export_path: true
+        reshim: true
+
+    - name: Ensure mise shims on PATH
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Defense in depth: mise-action usually exports these; keep self-hosted runners honest.
+        for dir in \
+          "${HOME}/.local/share/mise/shims" \
+          "${XDG_DATA_HOME:-}/mise/shims" \
+          "${MISE_DATA_DIR:-}/shims" \
+          "${HOME}/.local/bin"
+        do
+          if [[ -n "$dir" && -d "$dir" ]]; then
+            echo "$dir" >> "$GITHUB_PATH"
+          fi
+        done
+        command -v mise >/dev/null
+        mise --version
