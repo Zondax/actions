@@ -1,0 +1,52 @@
+name: Setup runner
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./setup-runner
+      - name: Verify
+        run: |
+          set -euo pipefail
+          for tool in cc c++ make clang cmake ninja pkg-config nasm wget; do
+            command -v "$tool"
+          done
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./setup-runner
+      - name: Verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          for tool in cc c++ make nasm clang clang-cl pwsh; do
+            command -v "$tool"
+          done
+
+  macos:
+    name: macOS
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./setup-runner
+      - name: Verify
+        run: command -v cc

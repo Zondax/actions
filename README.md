@@ -78,6 +78,22 @@ Optional Init7/mirror config + apt install helpers.
       - pkg-config
 ```
 
+### setup-runner
+
+C/C++ toolchain, NASM, and pwsh. Installs only what the runner is missing.
+Hosted images usually no-op; self-hosted jobs get a usable `PATH`.
+
+```yaml
+- uses: zondax/actions/setup-runner@v1
+```
+
+Linux uses apt when `cc`/`nasm`/… are absent. Windows adds NASM and Visual
+Studio LLVM to `PATH`, and installs pwsh 7 into the job temp dir if needed.
+macOS only checks that `cc` exists.
+
+Runner selection stays in the workflow (`runs-on` / `vars.CI_RUNNER_*`). This
+action does not pick machines.
+
 ### gcp-wif-auth
 
 Workload Identity Federation via a **single** `google-github-actions/auth` step.
@@ -172,6 +188,7 @@ CI:
 
 - `install-node.yml` — matrix Node 22/24 × package managers, setup-mise, release-hold smoke, react-doctor parser
 - `install-ubuntu.yml` — package helper
+- `setup-runner.yml` — Linux/macOS/Windows compiler PATH
 - `actionlint.yml` — workflow lint
 
 ## Troubleshooting
