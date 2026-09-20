@@ -6,7 +6,7 @@ branding:
 
 inputs:
   version:
-    description: 'mise binary version pin (empty = latest from mise-action)'
+    description: 'mise CLI version pin (empty = latest from mise-action)'
     required: false
     default: ''
   cache:
@@ -17,6 +17,14 @@ inputs:
     description: 'Run mise install for project mise.toml (usually false for composites that install tools themselves)'
     required: false
     default: 'false'
+  install_args:
+    description: 'Arguments forwarded to mise install, e.g. rust or --force rust github:casey/just'
+    required: false
+    default: ''
+  reshim:
+    description: 'Run mise reshim after install'
+    required: false
+    default: 'true'
   github_token:
     description: 'Token for GitHub-hosted mise tools (rate limits / private repos)'
     required: false
@@ -36,17 +44,17 @@ runs:
   steps:
     - name: Install mise
       id: mise
-      uses: jdx/mise-action@v4
+      uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
       with:
         version: ${{ inputs.version }}
         cache: ${{ inputs.cache }}
         install: ${{ inputs.install }}
+        install_args: ${{ inputs.install_args }}
         github_token: ${{ inputs.github_token }}
         experimental: ${{ inputs.experimental }}
-        # Always expose shims for subsequent composite steps
         add_shims_to_path: true
         export_path: true
-        reshim: true
+        reshim: ${{ inputs.reshim }}
 
     - name: Ensure mise shims on PATH
       shell: bash
