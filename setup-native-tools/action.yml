@@ -1,0 +1,25 @@
+name: 'Setup native tools'
+description: 'Put C/C++ compilers, NASM, and pwsh on PATH. Install only what the runner is missing.'
+branding:
+  icon: 'cpu'
+  color: 'orange'
+
+runs:
+  using: composite
+  steps:
+    - name: Prepare Linux native tools
+      if: runner.os == 'Linux'
+      shell: bash
+      run: bash "${{ github.action_path }}/linux.sh"
+
+    - name: Prepare Windows native tools
+      if: runner.os == 'Windows'
+      shell: powershell
+      run: |
+        $ErrorActionPreference = 'Stop'
+        & (Join-Path "${{ github.action_path }}" 'windows.ps1')
+
+    - name: Check macOS compiler
+      if: runner.os == 'macOS'
+      shell: bash
+      run: command -v cc && cc --version | head -1
