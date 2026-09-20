@@ -23,10 +23,16 @@ Reusable **composite** GitHub Actions for Zondax / Kunobi CI. Prefer these over 
 
 ### setup-mise
 
-Canonical mise bootstrap (cache + shims on `PATH`).
+Canonical mise bootstrap (cache + shims on `PATH`). Pins `jdx/mise-action`
+to v4.2.0. Pass `version` to pin the mise CLI; pass `install_args` to install
+a subset of tools.
 
 ```yaml
 - uses: zondax/actions/setup-mise@v1
+  with:
+    version: '2026.6.9'
+    cache: false
+    install_args: rust
 ```
 
 ### setup-node-env
