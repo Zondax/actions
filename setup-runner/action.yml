@@ -1,4 +1,4 @@
-name: 'Setup native tools'
+name: 'Setup runner'
 description: 'Put C/C++ compilers, NASM, and pwsh on PATH. Install only what the runner is missing.'
 branding:
   icon: 'cpu'

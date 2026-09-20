@@ -1,4 +1,4 @@
-name: Native tools
+name: Setup runner
 
 on:
   push:
@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - uses: ./setup-native-tools
+      - uses: ./setup-runner
       - name: Verify
         run: |
           set -euo pipefail
@@ -32,7 +32,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: ./setup-native-tools
+      - uses: ./setup-runner
       - name: Verify
         shell: bash
         run: |
@@ -47,6 +47,6 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - uses: ./setup-native-tools
+      - uses: ./setup-runner
       - name: Verify
         run: command -v cc

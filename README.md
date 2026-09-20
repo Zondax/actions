@@ -78,13 +78,13 @@ Optional Init7/mirror config + apt install helpers.
       - pkg-config
 ```
 
-### setup-native-tools
+### setup-runner
 
 C/C++ toolchain, NASM, and pwsh. Installs only what the runner is missing.
 Hosted images usually no-op; self-hosted jobs get a usable `PATH`.
 
 ```yaml
-- uses: zondax/actions/setup-native-tools@v1
+- uses: zondax/actions/setup-runner@v1
 ```
 
 Linux uses apt when `cc`/`nasm`/… are absent. Windows adds NASM and Visual
@@ -188,7 +188,7 @@ CI:
 
 - `install-node.yml` — matrix Node 22/24 × package managers, setup-mise, release-hold smoke, react-doctor parser
 - `install-ubuntu.yml` — package helper
-- `setup-native-tools.yml` — Linux/macOS/Windows compiler PATH
+- `setup-runner.yml` — Linux/macOS/Windows compiler PATH
 - `actionlint.yml` — workflow lint
 
 ## Troubleshooting
