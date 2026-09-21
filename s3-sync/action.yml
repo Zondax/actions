@@ -9,7 +9,7 @@ inputs:
     description: 'Local directory or s3:<bucket>/<prefix>/'
     required: true
   dest:
-    description: 'Destination prefix inside the bucket (no s3: prefix)'
+    description: 'Bucket prefix (no s3: prefix) or a local path starting with ./ or /'
     required: true
   bucket:
     description: 'Bucket name'

@@ -32,9 +32,16 @@ if [[ "$src" != s3:* ]]; then
   [[ "$src" == */ ]] || src="${src}/"
 fi
 
-dest_prefix="${DEST_PREFIX#/}"
-[[ "$dest_prefix" == */ ]] || dest_prefix="${dest_prefix}/"
-dest="s3:${BUCKET}/${dest_prefix}"
+dest_prefix="$DEST_PREFIX"
+if [[ "$dest_prefix" == ./* ]] || [[ "$dest_prefix" == /* ]] || [[ "$dest_prefix" == ../* ]]; then
+  dest="$dest_prefix"
+  mkdir -p "$dest"
+  [[ "$dest" == */ ]] || dest="${dest}/"
+else
+  dest_prefix="${dest_prefix#/}"
+  [[ "$dest_prefix" == */ ]] || dest_prefix="${dest_prefix}/"
+  dest="s3:${BUCKET}/${dest_prefix}"
+fi
 
 count="$("$rclone_bin" ls "$src" 2>/dev/null | wc -l | tr -d ' ')"
 if [ "${count:-0}" = '0' ]; then
