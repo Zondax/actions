@@ -10,7 +10,7 @@ if [ -z "$rclone_bin" ]; then
   exit 1
 fi
 
-if [ -z "${RCLONE_CONFIG_R2_ACCESS_KEY_ID:-}" ] || [ -z "${BUCKET:-}" ] || [ -z "${RCLONE_CONFIG_R2_ENDPOINT:-}" ]; then
+if [ -z "${RCLONE_CONFIG_S3_ACCESS_KEY_ID:-}" ] || [ -z "${BUCKET:-}" ] || [ -z "${RCLONE_CONFIG_S3_ENDPOINT:-}" ]; then
   echo '::error::bucket, endpoint, and access_key_id are required'
   exit 1
 fi
@@ -24,7 +24,7 @@ case "$MODE" in
 esac
 
 src="$SRC"
-if [[ "$src" != r2:* ]]; then
+if [[ "$src" != s3:* ]]; then
   if [ ! -d "$src" ]; then
     echo "::error::local source is not a directory: $src"
     exit 1
@@ -34,7 +34,7 @@ fi
 
 dest_prefix="${DEST_PREFIX#/}"
 [[ "$dest_prefix" == */ ]] || dest_prefix="${dest_prefix}/"
-dest="r2:${BUCKET}/${dest_prefix}"
+dest="s3:${BUCKET}/${dest_prefix}"
 
 count="$("$rclone_bin" ls "$src" 2>/dev/null | wc -l | tr -d ' ')"
 if [ "${count:-0}" = '0' ]; then
