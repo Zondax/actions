@@ -18,6 +18,20 @@ Cloudflare R2, AWS S3, and Ceph RGW (any S3 API). rclone must already be on
     mode: sync
 ```
 
+S3 to a local directory (dest starts with `./` or `/`):
+
+```yaml
+- uses: zondax/actions/s3-sync@v1
+  with:
+    source: s3:${{ vars.BUCKET }}/staging/${{ github.run_id }}/linux/
+    dest: ./platform-artifacts/
+    bucket: ${{ vars.BUCKET }}
+    endpoint: ${{ vars.S3_ENDPOINT }}
+    access_key_id: ${{ secrets.S3_ACCESS_KEY_ID }}
+    secret_access_key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+    mode: copy
+```
+
 S3 to S3 (same credentials):
 
 ```yaml
