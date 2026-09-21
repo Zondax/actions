@@ -1,0 +1,67 @@
+name: 'R2 sync'
+description: 'Copy or sync a local directory or R2 prefix to an R2 prefix'
+branding:
+  icon: 'upload-cloud'
+  color: 'orange'
+
+inputs:
+  source:
+    description: 'Local directory or r2:<bucket>/<prefix>/'
+    required: true
+  dest:
+    description: 'Destination prefix inside the bucket (no r2: prefix)'
+    required: true
+  bucket:
+    description: 'R2 bucket'
+    required: true
+  endpoint:
+    description: 'R2 S3 endpoint (https://<account_id>.r2.cloudflarestorage.com)'
+    required: true
+  access_key_id:
+    description: 'R2 access key id'
+    required: true
+  secret_access_key:
+    description: 'R2 secret access key'
+    required: true
+  mode:
+    description: 'rclone copy or sync'
+    required: false
+    default: 'copy'
+  extra_args:
+    description: 'Extra rclone flags (e.g. --delete-during)'
+    required: false
+    default: ''
+  required:
+    description: 'Fail when the source has no objects (true/false)'
+    required: false
+    default: 'true'
+
+outputs:
+  dest:
+    description: 'r2:<bucket>/<dest> written'
+    value: ${{ steps.run.outputs.dest }}
+  count:
+    description: 'Object count at source'
+    value: ${{ steps.run.outputs.count }}
+
+runs:
+  using: composite
+  steps:
+    - name: rclone ${{ inputs.mode }}
+      id: run
+      shell: bash
+      env:
+        SRC: ${{ inputs.source }}
+        DEST_PREFIX: ${{ inputs.dest }}
+        BUCKET: ${{ inputs.bucket }}
+        MODE: ${{ inputs.mode }}
+        EXTRA_ARGS: ${{ inputs.extra_args }}
+        REQUIRED: ${{ inputs.required }}
+        RCLONE_CONFIG_R2_TYPE: s3
+        RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+        RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ inputs.access_key_id }}
+        RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ inputs.secret_access_key }}
+        RCLONE_CONFIG_R2_ENDPOINT: ${{ inputs.endpoint }}
+        RCLONE_CONFIG_R2_REGION: auto
+        RCLONE_CONFIG_R2_NO_CHECK_BUCKET: 'true'
+      run: bash "${{ github.action_path }}/run.sh"
