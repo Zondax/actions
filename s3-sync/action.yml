@@ -1,0 +1,75 @@
+name: 'S3 sync'
+description: 'Copy or sync a local directory or S3 prefix to an S3 prefix (R2, AWS, Ceph RGW)'
+branding:
+  icon: 'upload-cloud'
+  color: 'orange'
+
+inputs:
+  source:
+    description: 'Local directory or s3:<bucket>/<prefix>/'
+    required: true
+  dest:
+    description: 'Destination prefix inside the bucket (no s3: prefix)'
+    required: true
+  bucket:
+    description: 'Bucket name'
+    required: true
+  endpoint:
+    description: 'S3 API endpoint (R2, AWS, or Ceph RGW)'
+    required: true
+  access_key_id:
+    description: 'Access key id'
+    required: true
+  secret_access_key:
+    description: 'Secret access key'
+    required: true
+  provider:
+    description: 'rclone S3 provider (Cloudflare, AWS, Other, Ceph, Minio, …)'
+    required: false
+    default: 'Other'
+  region:
+    description: 'S3 region (auto for R2, us-east-1 for Ceph RGW)'
+    required: false
+    default: 'us-east-1'
+  mode:
+    description: 'rclone copy or sync'
+    required: false
+    default: 'copy'
+  extra_args:
+    description: 'Extra rclone flags (e.g. --delete-during)'
+    required: false
+    default: ''
+  required:
+    description: 'Fail when the source has no objects (true/false)'
+    required: false
+    default: 'true'
+
+outputs:
+  dest:
+    description: 's3:<bucket>/<dest> written'
+    value: ${{ steps.run.outputs.dest }}
+  count:
+    description: 'Object count at source'
+    value: ${{ steps.run.outputs.count }}
+
+runs:
+  using: composite
+  steps:
+    - name: rclone ${{ inputs.mode }}
+      id: run
+      shell: bash
+      env:
+        SRC: ${{ inputs.source }}
+        DEST_PREFIX: ${{ inputs.dest }}
+        BUCKET: ${{ inputs.bucket }}
+        MODE: ${{ inputs.mode }}
+        EXTRA_ARGS: ${{ inputs.extra_args }}
+        REQUIRED: ${{ inputs.required }}
+        RCLONE_CONFIG_S3_TYPE: s3
+        RCLONE_CONFIG_S3_PROVIDER: ${{ inputs.provider }}
+        RCLONE_CONFIG_S3_ACCESS_KEY_ID: ${{ inputs.access_key_id }}
+        RCLONE_CONFIG_S3_SECRET_ACCESS_KEY: ${{ inputs.secret_access_key }}
+        RCLONE_CONFIG_S3_ENDPOINT: ${{ inputs.endpoint }}
+        RCLONE_CONFIG_S3_REGION: ${{ inputs.region }}
+        RCLONE_CONFIG_S3_NO_CHECK_BUCKET: 'true'
+      run: bash "${{ github.action_path }}/run.sh"

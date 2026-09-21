@@ -113,6 +113,27 @@ Workload Identity Federation via a **single** `google-github-actions/auth` step.
     token_format: access_token            # when you need access_token output
 ```
 
+### s3-sync
+
+Copy or sync a local directory or S3 prefix to an S3 prefix (R2, AWS, Ceph
+RGW). rclone must already be on `PATH`.
+
+```yaml
+- uses: zondax/actions/s3-sync@v1
+  with:
+    source: dist/
+    dest: staging/${{ github.run_id }}/
+    bucket: ${{ vars.BUCKET }}
+    endpoint: ${{ vars.S3_ENDPOINT }}
+    access_key_id: ${{ secrets.S3_ACCESS_KEY_ID }}
+    secret_access_key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+    provider: Other
+    region: us-east-1
+    mode: sync
+```
+
+See [`s3-sync/README.md`](./s3-sync/README.md).
+
 ### release-hold
 
 Time-based gate before publishing (artifact / release age).
