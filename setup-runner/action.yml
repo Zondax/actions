@@ -12,12 +12,15 @@ runs:
       shell: bash
       run: bash "${{ github.action_path }}/linux.sh"
 
+    # `shell: powershell` makes Actions write the step to a .ps1 and dot-source
+    # it, which a runner whose ExecutionPolicy is Restricted refuses to load —
+    # the step dies before reaching this action's own script. cmd is not subject
+    # to that policy, so call PowerShell explicitly with a bypass. windows.ps1
+    # sets its own $ErrorActionPreference, so nothing is lost here.
     - name: Prepare Windows native tools
       if: runner.os == 'Windows'
-      shell: powershell
-      run: |
-        $ErrorActionPreference = 'Stop'
-        & (Join-Path "${{ github.action_path }}" 'windows.ps1')
+      shell: cmd
+      run: powershell -NoProfile -ExecutionPolicy Bypass -File "%GITHUB_ACTION_PATH%\windows.ps1"
 
     - name: Check macOS compiler
       if: runner.os == 'macOS'
