@@ -52,9 +52,25 @@ jobs:
           echo "✅ Node.js ${{ matrix.node_version }} + ${{ matrix.package_manager }} working!"
 
   test-setup-mise:
-    name: setup-mise smoke
-    runs-on: ubuntu-latest
+    name: setup-mise smoke (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+      # No cache, so mise-action downloads mise through the curl config.
       - uses: ./setup-mise
+        with:
+          cache: false
       - run: mise --version
+      - name: The curl the download uses accepts the config
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl=curl
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            curl=/c/Windows/System32/curl.exe
+          fi
+          "$curl" -q -K "$RUNNER_TEMP/setup-mise-curl/.curlrc" -fsS -o "$RUNNER_TEMP/github.html" https://github.com
