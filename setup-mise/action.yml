@@ -42,9 +42,34 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    # mise-action downloads mise with a bare `curl -fsSL` and never retries.
+    # Give that curl a config of its own: retry transient failures, and on
+    # Windows let Schannel go on when the CA's revocation server does not
+    # answer (CRYPT_E_REVOCATION_OFFLINE). A certificate that is revoked is
+    # still refused.
+    - name: Configure curl for the mise download
+      id: curl
+      shell: bash
+      run: |
+        set -euo pipefail
+        dir="${RUNNER_TEMP}/setup-mise-curl"
+        mkdir -p "$dir"
+        {
+          echo 'retry = 3'
+          echo 'retry-all-errors'
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            echo 'ssl-revoke-best-effort'
+          fi
+        } > "$dir/.curlrc"
+        # Older Windows builds of curl only look for `_curlrc`.
+        cp "$dir/.curlrc" "$dir/_curlrc"
+        echo "home=$dir" >> "$GITHUB_OUTPUT"
+
     - name: Install mise
       id: mise
       uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
+      env:
+        CURL_HOME: ${{ steps.curl.outputs.home }}
       with:
         version: ${{ inputs.version }}
         cache: ${{ inputs.cache }}
@@ -53,7 +78,6 @@ runs:
         github_token: ${{ inputs.github_token }}
         experimental: ${{ inputs.experimental }}
         add_shims_to_path: true
-        export_path: true
         reshim: ${{ inputs.reshim }}
 
     - name: Ensure mise shims on PATH
