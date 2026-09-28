@@ -41,6 +41,14 @@ inputs:
     description: 'Submit for Apple notarization (true/false)'
     required: false
     default: 'false'
+  entitlements:
+    description: >
+      Path to an entitlements plist to sign with, e.g. one granting
+      com.apple.security.cs.allow-dyld-environment-variables to a tool whose
+      children need DYLD_* (hardened runtime removes them otherwise). Empty
+      signs without entitlements.
+    required: false
+    default: ''
   certificate_secret:
     description: 'Secret Manager id: base64 Developer ID .p12. Alias: certificate-secret'
     required: false
@@ -227,6 +235,7 @@ runs:
       env:
         BINARY_PATH: ${{ steps.args.outputs.binary_path }}
         NOTARIZE: ${{ inputs.notarize }}
+        ENTITLEMENTS: ${{ inputs.entitlements }}
         P12_B64: ${{ steps.cert.outputs.p12 }}
         P12_PASSWORD: ${{ steps.cert.outputs.p12pw }}
         P8_B64: ${{ steps.notary.outputs.p8 }}
@@ -236,7 +245,12 @@ runs:
         set -euo pipefail
         P12="$RUNNER_TEMP/rcodesign-cert.p12"
         ( umask 077; printf '%s' "$P12_B64" | base64 --decode > "$P12" )
-        rcodesign sign --p12-file "$P12" --p12-password "$P12_PASSWORD" --code-signature-flags runtime "$BINARY_PATH"
+        ENTITLEMENT_ARGS=()
+        if [[ -n "$ENTITLEMENTS" ]]; then
+          [ -f "$ENTITLEMENTS" ] || { echo "::error::entitlements file not found: $ENTITLEMENTS"; exit 1; }
+          ENTITLEMENT_ARGS=(--entitlements-xml-file "$ENTITLEMENTS")
+        fi
+        rcodesign sign --p12-file "$P12" --p12-password "$P12_PASSWORD" --code-signature-flags runtime ${ENTITLEMENT_ARGS[@]+"${ENTITLEMENT_ARGS[@]}"} "$BINARY_PATH"
         rm -f "$P12"
         if [[ "$NOTARIZE" == "true" ]]; then
           [ -n "$P8_B64" ] && [ -n "$APPLE_API_ISSUER" ] && [ -n "$APPLE_API_KEY" ] || { echo "::error::notarize=true but notary secrets missing"; exit 1; }

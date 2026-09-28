@@ -169,6 +169,7 @@ Platform code-signing (GCP KMS / Secret Manager / jsign / rcodesign).
 - Prefer **snake_case** inputs; **kebab-case aliases** still work for existing Kunobi workflows.
 - Linux/macOS compose `./gcp-wif-auth` + `./setup-mise` from the same tag.
 - See each action’s `action.yml` for inputs.
+- `sign-macos-binary` signs with hardened runtime. Pass `entitlements: path/to/app.entitlements` when the binary needs one, e.g. `com.apple.security.cs.allow-dyld-environment-variables` for a wrapper whose children rely on `DYLD_*`: without it macOS removes those variables before the binary starts.
 
 ```yaml
 # Linux OpenPGP (KMS)
