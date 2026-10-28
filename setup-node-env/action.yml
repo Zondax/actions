@@ -147,7 +147,8 @@ runs:
           mise use --global "npm:typescript@${TS_VERSION}"
         fi
 
-        mise install
+        # `mise use` already installed the tools requested above. A bare
+        # `mise install` also installs every tool in the caller's mise.toml.
         mise reshim
 
     - name: Verify toolchain
